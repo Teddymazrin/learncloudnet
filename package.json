@@ -1,0 +1,29 @@
+{
+  "name": "next-hop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Next Hop: Learn Azure networking, beginner to advanced.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "npx serve out",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "preview:bundle": "node preview/build.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "react": "19.1.10",
+    "react-dom": "19.1.10"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3",
+    "vite": "7.1.12",
+    "vitest": "5.0.4"
+  }
+}
