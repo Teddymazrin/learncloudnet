@@ -54,7 +54,7 @@ export function winCmd(st: State, hostName: string, tokens: string[]): RunResult
   };
 
   if (cmd === "test-netconnection" || cmd === "tnc") {
-    if (!canon) return { text: "lab: usage: Test-NetConnection <host> -Port <port>, for example Test-NetConnection 10.1.1.4 -Port 443" };
+    if (!canon) return { text: "lab: usage: Test-NetConnection <host> -Port <port>, for example Test-NetConnection 10.1.1.4 -Port 443", error: true };
     const [, , host, p] = canon.split(" ");
     const port = Number(p);
     const r = resolve(host);
@@ -64,8 +64,20 @@ export function winCmd(st: State, hostName: string, tokens: string[]): RunResult
     if (c.ok) return { canon, text: block, trace: c };
     return { canon, text: `WARNING: TCP connect to (${r.ip} : ${port}) failed\n${block}\nlab trace: ${c.stage === "port" ? "the VM answered but nothing is listening on that port. " : ""}${c.reason}`, trace: c };
   }
-  if (cmd === "resolve-dnsname" || cmd === "nslookup") {
-    if (!canon) return { text: "lab: usage: Resolve-DnsName <name>" };
+  // Windows ships nslookup.exe too. It prints its own format, not Resolve-DnsName's, so the two never look alike.
+  if (cmd === "nslookup") {
+    if (!canon) return { text: "lab: usage: nslookup <name>", error: true };
+    const name = canon.split(" ")[1];
+    const r = resolveFrom(st, hostName, name);
+    if (r.timeout) return { canon, text: `DNS request timed out.\n    timeout was 2 seconds.\n*** Request to UnKnown timed-out\nlab: ${r.steps.filter((x) => !x.ok).map((x) => x.text).join(" ")}` };
+    const head = [`Server:  UnKnown`, `Address:  ${r.server}`, ""];
+    if (r.nx) return { canon, text: [...head, `*** UnKnown can't find ${name}: Non-existent domain`].join("\n") };
+    const lines = [...head, "Non-authoritative answer:", `Name:    ${r.name}`, `Address:  ${r.ip}`];
+    if (r.aliases.length) lines.push(`Aliases:  ${r.aliases[0]}`, ...r.aliases.slice(1).map((a) => `          ${a}`));
+    return { canon, text: `${lines.join("\n")}\nlab: that's nslookup.exe. Resolve-DnsName is the PowerShell way, and shows the same answer as a table.` };
+  }
+  if (cmd === "resolve-dnsname") {
+    if (!canon) return { text: "lab: usage: Resolve-DnsName <name>", error: true };
     const name = canon.split(" ")[1];
     const r = resolveFrom(st, hostName, name);
     if (r.timeout) return { canon, text: `Resolve-DnsName : ${name} : This operation returned because the timeout period expired\nlab: ${r.steps.filter((x) => !x.ok).map((x) => x.text).join(" ")}` };
@@ -75,8 +87,13 @@ export function winCmd(st: State, hostName: string, tokens: string[]): RunResult
     lines.push(`${r.name.padEnd(31)}A      10    Answer     ${r.ip}`);
     return { canon, text: `${lines.join("\n")}\nlab: answered by the DNS server at ${r.server}.` };
   }
+  // In Windows PowerShell, curl is an alias for Invoke-WebRequest, so Linux flags like -sI fail. curl.exe is the real curl.
+  if (cmd === "curl" && tokens.slice(1).some((t) => /^-[a-zA-Z]{1,3}$/.test(t))) {
+    const bad = tokens.slice(1).find((t) => /^-[a-zA-Z]{1,3}$/.test(t))!;
+    return { error: true, text: `Invoke-WebRequest : A parameter cannot be found that matches parameter name '${bad.slice(1)}'.\nlab: in Windows PowerShell, curl is a shortcut for Invoke-WebRequest, which doesn't take Linux flags. Use Invoke-WebRequest https://<host> -Method Head, or curl.exe ${tokens.slice(1).join(" ")}.` };
+  }
   if (cmd === "invoke-webrequest" || cmd === "iwr" || cmd === "curl" || cmd === "curl.exe") {
-    if (!canon) return { text: "lab: usage: Invoke-WebRequest https://<host> -Method Head" };
+    if (!canon) return { text: "lab: usage: Invoke-WebRequest https://<host> -Method Head", error: true };
     const host = canon.split(" ")[2].replace(/^https?:\/\//i, "").split("/")[0];
     const r = resolve(host);
     if (!r.ip) return { canon, text: `Invoke-WebRequest : The remote name could not be resolved: '${host}'` };
@@ -95,7 +112,8 @@ export function winCmd(st: State, hostName: string, tokens: string[]): RunResult
   }
   if (cmd === "hostname") return { text: h.name };
   if (cmd === "az") return { text: `lab: the Azure CLI isn't installed on ${h.name}. Type exit to return to Cloud Shell.`, error: true };
-  const linux: Record<string, string> = { nc: "Test-NetConnection", ip: "ipconfig", dig: "Resolve-DnsName" };
+  const linux: Record<string, string> = { nc: "Test-NetConnection", ip: "ipconfig", dig: "Resolve-DnsName", ufw: "Get-NetFirewallRule", ss: "Get-NetTCPConnection", netstat: "Get-NetTCPConnection", systemctl: "Get-Service" };
   const near = linux[cmd] ?? closestWord(tokens[0], PS_CMDS);
-  return { text: `${tokens[0]} : The term '${tokens[0]}' is not recognized as the name of a cmdlet, function, script file, or operable program.${near ? ` Did you mean ${near}?` : ""}\nlab: on this Windows VM you can use Test-NetConnection, Resolve-DnsName, Invoke-WebRequest, ipconfig, hostname, exit.` };
+  const linuxOnly = cmd in linux || ["ping", "sudo", "ls", "cat"].includes(cmd);
+  return { error: true, text: `${linuxOnly ? `lab: ${tokens[0]} is a Linux command, and ${h.name} runs Windows. Switch VMs to Linux above the shell, or use the PowerShell command.\n` : ""}${tokens[0]} : The term '${tokens[0]}' is not recognized as the name of a cmdlet, function, script file, or operable program.${near ? ` Did you mean ${near}?` : ""}\nlab: on this Windows VM you can use Test-NetConnection, Resolve-DnsName, Invoke-WebRequest, ipconfig, hostname, exit.` };
 }

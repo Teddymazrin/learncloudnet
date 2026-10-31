@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LEVELS } from "@/content";
 import { evalFlow } from "@/content/flows";
-import { causeChoices, hintParts, mentorSteps, splitObjectives, startingCause, usesMentor } from "@/lib/mentor";
+import { causeChoices, hintParts, hopTo, mentorSteps, splitObjectives, startingCause, usesMentor } from "@/lib/mentor";
 import { run } from "@/sim/shell";
 import { newSession } from "@/sim/types";
 
@@ -43,19 +43,21 @@ describe("the mentor's process", () => {
     expect(steps()[1].done).toBe(true);
   });
 
-  it("each step says exactly what to do from where you are, and Explain doesn't tick it for you", () => {
-    const l = LEVELS.find((x) => x.id === "wrong-tag")!;
+  it("each step is an action item: what to do, why, what to look for, and the tools, with no full commands", () => {
+    const l = LEVELS.find((x) => x.id === "wrong-side-of-the-glass")!;
     const st = l.setup();
     const s = newSession();
-    const flows = (l.flows ?? []).map((f) => evalFlow(st, f));
-    const steps = (explained = false) => mentorSteps(l, { st, log: s.log, flows, goalsDone: false, causeOk: false, hasCause: true, questionsDone: false, hasQuestions: true, vm: s.vm, explained });
-    expect(steps()[0].cmds).toEqual(["ssh vm-partner", "nc -zv 10.1.1.4 443"]);
-    expect(steps(true)[0].done).toBe(false);
-    run(st, "ssh vm-partner", s);
-    expect(steps()[0].cmds).toEqual(["nc -zv 10.1.1.4 443"]);
-    expect(run(st, "ssh vm-partner", s).text).toMatch(/already on vm-partner/);
-    expect(run(st, "ssh vm-web", s).text).toMatch(/left vm-partner/);
-    expect(steps()[0].cmds).toEqual(["exit", "ssh vm-partner", "nc -zv 10.1.1.4 443"]);
+    const steps = () => mentorSteps(l, { st, log: s.log, flows: (l.flows ?? []).map((f) => evalFlow(st, f)), goalsDone: false, causeOk: false, hasCause: true, questionsDone: false, hasQuestions: false, vm: s.vm, explained: false });
+    expect(steps()[0].say).toBe("From vm-spoke1, look up stlogs01.blob.core.windows.net, then try to connect to it on port 443.");
+    expect(steps()[0].lookFor).toMatch(/10\.0\.3\.4 \(pe-stlogs01\)/);
+    // The step names the tools and where they run, and stays the same as you move between the VM and Cloud Shell.
+    const before = steps().map((m) => [m.say, m.why, m.lookFor]);
+    run(st, "ssh vm-spoke1", s);
+    expect(steps().map((m) => [m.say, m.why, m.lookFor])).toEqual(before);
+    expect(steps()[0].tools?.[0]).toMatch(/You're already on it/);
+    for (const m of steps()) for (const t of m.tools ?? []) expect(t, t).not.toMatch(/\baz network\b|--/);
+    expect(hopTo(s.vm, undefined)).toEqual(["exit"]);
+    expect(hopTo(null, "vm-spoke1")).toEqual(["ssh vm-spoke1"]);
   });
 
   it("every step past the first says what ticks it off, and every test step has a way to do it", () => {
@@ -63,7 +65,8 @@ describe("the mentor's process", () => {
       const st = l.setup();
       const steps = mentorSteps(l, { st, log: [], flows: (l.flows ?? []).map((f) => evalFlow(st, f)), goalsDone: false, causeOk: false, hasCause: true, questionsDone: false, hasQuestions: true, vm: null, explained: false });
       for (const m of steps.filter((x) => x.id !== "explain")) expect(m.tick, `${l.id} ${m.id}`).toBeTruthy();
-      expect(steps[0].portal ?? steps[0].cmds, l.id).toBeTruthy();
+      expect(steps[0].tools?.length, l.id).toBeTruthy();
+      for (const m of steps.filter((x) => x.id !== "explain")) expect(m.why, `${l.id} ${m.id}`).toBeTruthy();
     }
   });
 });

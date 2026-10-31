@@ -6,7 +6,7 @@ import { newSession, type Session, type State, type TraceResult } from "@/sim/ty
 import { createsIn, emptySandbox, formPolicy, formStep, getLevel, levelNumber, nextLevel, TIERS } from "@/content";
 import type { Flow, Level } from "@/content/types";
 import { useProgress } from "@/lib/progress";
-import { NetworkMap, NvaIcon, PeIcon, RouteIc, Shield, VmIcon, VnetIc, type Packet, type Selection } from "./NetworkMap";
+import { linesOnMap, NetworkMap, NvaIcon, PeIcon, RouteIc, Shield, VmIcon, VnetIc, type Packet, type Selection } from "./NetworkMap";
 import { MapViewport } from "./MapViewport";
 import { Inspector } from "./Inspector";
 import { Portal, type PortalGroup } from "./Portal";
@@ -18,9 +18,12 @@ import { changeLabel, changedKeys, signatures } from "@/lib/diff";
 import { chime } from "@/lib/sound";
 import { Terminal, type Line } from "./Terminal";
 import { suggest } from "@/lib/complete";
-import { causeChoices, hintParts, METHOD_HINTS, mentorSteps, splitObjectives, type MentorStep, startingCause, usesMentor } from "@/lib/mentor";
+import { causeChoices, hintParts, hopTo, METHOD_HINTS, mentorSteps, splitObjectives, type MentorStep, startingCause, usesMentor } from "@/lib/mentor";
 import { summarize, type ResultCard } from "@/lib/result";
 import { whatsThis } from "@/lib/whatsthis";
+import { resourcesOf } from "@/lib/resources";
+import { hintLayer, liveResult, typedForm } from "@/lib/hintinfo";
+import { fixSummary, issueSummary, walkthrough, type Phase } from "@/lib/walkthrough";
 import { termsIn } from "@/lib/terms";
 import { toWindows, type Os } from "@/sim/windows";
 import { linuxOnly } from "@/lib/os";
@@ -49,44 +52,30 @@ function starsFor(level: Level, changes: number, paid: number, seconds: number, 
 }
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
-/** How to do one mentor step, in the player's mode: where to click in the Portal, or the exact lines to type, one per row. */
-function StepHow({ step, portal, onType, osSwitch }: { step: MentorStep; portal: boolean; onType: (c: string) => void; osSwitch?: ReactNode }) {
-  if (step.options) return (
-    <ul className="mstep-options">
-      {step.before && !portal && <li className="before"><b>{step.before.label}</b><ol className="mstep-cmds">{step.before.cmds.map((c, k) => <li key={k}><CmdRow cmd={c} onType={onType} /></li>)}</ol></li>}
-      {step.options.map((o) => (
-        <li key={o.label}>
-          <b>{o.label}</b>
-          {portal && <p className="mstep-portal">In the Portal: {o.portal}</p>}
-          {portal ? <ShellToo cmds={o.cmds} onType={onType} /> : <ol className="mstep-cmds">{o.cmds.map((c, k) => <li key={k}><CmdRow cmd={c} onType={onType} /></li>)}</ol>}
-        </li>
-      ))}
-    </ul>
-  );
-  // In the Portal, say where to click, and keep the Cloud Shell way one tap away so both are learned.
-  if ((portal || !step.cmds) && step.portal) return <><p className="mstep-portal">{portal ? "In the Portal: " : ""}{step.portal}</p>{portal && step.cmds && <ShellToo cmds={step.cmds} onType={onType} osSwitch={osSwitch} />}</>;
-  if (!step.cmds) return null;
-  // Commands that run on the VM come in a Linux and a Windows flavor: offer the choice right where they are.
-  const onVm = step.cmds.some((c) => !/^(az|ssh|exit)\b/.test(c));
+/** Where a set of lines runs, and what to type first when the shell is somewhere else. The lines themselves never shift as you move. */
+function Where({ on, vm, onType }: { on?: string; vm: string | null; onType: (c: string) => void }) {
+  const hop = hopTo(vm, on);
   return (
-    <>
-      {onVm && osSwitch && <div className="mstep-os"><span>VM commands for</span>{osSwitch}</div>}
-      <ol className="mstep-cmds">
-        {step.cmds.map((c, k) => <li key={k}><CmdRow cmd={c} onType={onType} /></li>)}
-      </ol>
-    </>
+    <div className={`where${hop.length ? " away" : ""}`}>
+      <span className="where-chip">{on ? `Runs on ${on}` : "Runs in Cloud Shell"}</span>
+      {hop.length > 0
+        ? <><span className="where-note">You&apos;re {vm ? `on ${vm}` : "in Cloud Shell"}, so get there first:</span><ol className="mstep-cmds">{hop.map((c) => <li key={c}><CmdRow cmd={c} onType={onType} /></li>)}</ol></>
+        : <span className="where-note">You&apos;re there.</span>}
+    </div>
   );
 }
 
-/** The Cloud Shell commands for a step, folded under the Portal path. */
-function ShellToo({ cmds, onType, osSwitch }: { cmds: string[]; onType: (c: string) => void; osSwitch?: ReactNode }) {
-  const onVm = cmds.some((c) => !/^(az|ssh|exit)\b/.test(c));
+/** One step of the process as an action item: what to do, why, what to look for, and which tools do it. The exact lines live in the walkthrough. */
+/** With help hidden, a step still says what to do and what ticks it, but not why, what to look for, or which tools. */
+function StepItem({ step, brief }: { step: MentorStep; brief?: boolean }) {
   return (
-    <details className="shell-too">
-      <summary>Or in Cloud Shell</summary>
-      {onVm && osSwitch && <div className="mstep-os"><span>VM commands for</span>{osSwitch}</div>}
-      <ol className="mstep-cmds">{cmds.map((c, k) => <li key={k}><CmdRow cmd={c} onType={onType} /></li>)}</ol>
-    </details>
+    <div className="mstep-item">
+      {step.say && <p className="mstep-say">{step.say}</p>}
+      {!brief && step.why && <p className="mstep-why"><b>Why</b>{step.why}</p>}
+      {!brief && step.lookFor && <p className="mstep-look"><b>Look for</b>{step.lookFor}</p>}
+      {!brief && step.tools && <div className="mstep-tools"><b>Tools</b><ul>{step.tools.map((t) => <li key={t}>{t}</li>)}</ul></div>}
+      {step.tick && <p className="mstep-tick">{step.tick}</p>}
+    </div>
   );
 }
 
@@ -108,8 +97,12 @@ function CmdRow({ cmd, onType }: { cmd: string; onType: (c: string) => void }) {
 }
 
 /** A hint, in the player's mode: in the Portal, where to click (the command one tap away); in Cloud Shell, the command. */
-function HintBody({ hint, portal, os, onType }: { hint: string; portal: boolean; os: Os; onType: (c: string) => void }) {
-  const h = hintParts(hint);
+function HintBody({ hint, portal, os, onType, st }: { hint: string; portal: boolean; os: Os; onType: (c: string) => void; st?: State }) {
+  const h0 = hintParts(hint);
+  // A command named in passing, without the names it needs, reads as words. Only a line that runs gets Type it.
+  const typed = h0.cmd && st ? typedForm(st, h0.cmd) : h0.cmd;
+  if (h0.cmd && !typed) return <span>{hint}</span>;
+  const h = { ...h0, cmd: typed };
   if (!h.cmd) {
     // A bare in-VM command, like a step of the fix.
     if (!/^(ssh|nc|curl|nslookup|ufw|systemctl|ss|ip|sudo)\s/.test(hint)) return <span>{hint}</span>;
@@ -127,6 +120,25 @@ function HintBody({ hint, portal, os, onType }: { hint: string; portal: boolean;
     </span>
   );
 }
+
+/** A hint with its context: the layer it checks, why that layer matters, what to look for, and what the check returns in the lab right now. */
+function HintCard({ hint, label, st, portal, os, onType, repeat }: { hint: string; label: string; st: State; portal: boolean; os: Os; onType: (c: string) => void; repeat?: boolean }) {
+  const layer = hintLayer(hint);
+  const cmd = hintParts(hint).cmd;
+  const live = cmd ? liveResult(st, cmd, os) : null;
+  return (
+    <div className="hint">
+      <div className="hint-head"><span className="label" style={{ margin: 0 }}>{label}</span>{layer && <span className="hint-layer">{layer.name}</span>}</div>
+      <HintBody hint={hint} portal={portal} os={os} onType={onType} st={st} />
+      {/* The same layer as the hint before it: its why is already on screen. */}
+      {layer && !repeat && <p className="hint-why"><b>Why this layer</b>{layer.why}</p>}
+      {layer && !repeat && <p className="hint-why"><b>Look for</b>{layer.lookFor}</p>}
+      {live && <details className="hint-live"><summary>What it shows in your lab right now</summary><pre>{live}</pre></details>}
+    </div>
+  );
+}
+
+const WALK_PHASE: Record<Phase, string> = { see: "See it fail", look: "Look", fix: "Fix", check: "Check it works" };
 
 const vmPrompt = (s: Session) => (!s.vm ? "cloudshell:~$" : s.os === "windows" ? `PS ${s.vm} C:\\Users\\azureuser>` : `azureuser@${s.vm}:~$`);
 
@@ -149,6 +161,9 @@ export function LevelPlayer({ id }: { id: string }) {
   const [causeOk, setCauseOk] = useState(false);
   const [causeWrong, setCauseWrong] = useState<string | null>(null);
   const [sawFix, setSawFix] = useState(false);
+  // The full walkthrough: which way it's shown, and whether the steps past "see it fail" are open.
+  const [walkTab, setWalkTab] = useState<"cmd" | "portal" | null>(null);
+  const [walkAll, setWalkAll] = useState(false);
   const sawFixRef = useRef(false);
   // The last command's output, and the Portal's plain-words card for it.
   const lastOut = useRef<{ text: string; error: boolean } | null>(null);
@@ -223,7 +238,7 @@ export function LevelPlayer({ id }: { id: string }) {
     setWatches([]);
     session.current = newSession(os);
     setChanges(0); setHints(0); setTrace(null); setFinished(null); setSelected(null); setChanged(new Set()); setExplained({}); setExplains(0);
-    setCauseOk(false); setCauseWrong(null); setSawFix(false); sawFixRef.current = false; setPacket(null); setCelebrate(new Set());
+    setCauseOk(false); setCauseWrong(null); setSawFix(false); sawFixRef.current = false; setWalkAll(false); setPacket(null); setCelebrate(new Set());
     startedAt.current = Date.now(); setElapsed(0);
     changesRef.current = 0; finishedRef.current = null; assistRef.current = 0; goodRef.current = null; setForm(null); setResult(null);
     // Goals that already hold, like "port 22 stays blocked", show as met from the start, so only real progress counts as progress.
@@ -297,7 +312,7 @@ export function LevelPlayer({ id }: { id: string }) {
     }
     sawFixRef.current = true;
     setSawFix(true);
-    print(`lab: the fix, step by step:\n${level.solution.filter((c) => c !== "exit").map((c) => `  ${c}`).join("\n")}`, "lab");
+    print(`lab: the fix, step by step:\n${level.solution.filter((c) => c !== "exit" && !c.startsWith("answer ")).map((c) => `  ${c}`).join("\n")}`, "lab");
   }, [hints, ladder, level, print]);
   const canNudge = hints === 0;
   const markStuck = useCallback(() => {
@@ -575,12 +590,21 @@ export function LevelPlayer({ id }: { id: string }) {
   const looseQuestions = answerStep ? [] : level.objectives.filter((o) => o.question);
 
   const prompt = vmPrompt(session.current);
+  const resources = useMemo(() => resourcesOf(st.current), [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const walk = useMemo(() => (level.playground ? [] : walkthrough(level, os)), [level, os]);
+  const issue = useMemo(() => (level.playground ? [] : issueSummary(level)), [level]);
+  const fixes = useMemo(() => (level.playground ? [] : fixSummary(level)), [level]);
+  // Guided levels already show every command, so their walkthrough is free. Elsewhere it's the fix, and counts as seeing it.
+  const walkFree = !!level.steps;
+  const walkOpen = walkFree || walkAll || sawFix;
+  const wTab = walkTab ?? (view === "portal" ? "portal" : "cmd");
   const best = progress.done[level.id];
   const openGoals = level.objectives.filter((_, k) => !met[k]).length;
 
+  const onMap = linesOnMap(st.current, incident ? [] : flows, trace);
   const mapKey = (
     <details className="map-key">
-      <summary aria-label="Map key" title="Map key">?</summary>
+      <summary title="What the lines, colors and icons on the map mean"><span className="mk-q" aria-hidden="true">?</span>Map key</summary>
       <div className="map-key-body">
         <ul>
           <li><span className="k k-rg" />Resource group, the outer dashed frame</li>
@@ -589,9 +613,14 @@ export function LevelPlayer({ id }: { id: string }) {
           <li><svg className="k-ic" viewBox="-1 -1 15 17" width="14" height="16"><Shield x={0.5} y={1} /></svg>Network security group. A small shield on a VM&apos;s NIC means the NIC has one too</li>
           <li><svg className="k-ic" viewBox="-1 -1 15 15" width="14" height="14"><RouteIc x={0} y={0} /></svg>Route table on the subnet</li>
           <li><svg className="k-ic" viewBox="-10 0 52 38" width="34" height="25"><VmIcon x={0} y={0} nicNsg={false} /></svg>VM <svg className="k-ic" viewBox="0 0 40 34" width="28" height="24"><NvaIcon x={0} y={0} /></svg>Appliance <svg className="k-ic" viewBox="0 0 40 34" width="28" height="24"><PeIcon x={0} y={0} /></svg>Private endpoint</li>
-          <li><span className="k k-line" />Peering Connected <span className="k k-line half" />Initiated or access off</li>
-          <li><span className="k k-flow ok" />Goal working <span className="k k-flow bad" />Goal broken, X marks where it stops</li>
-          <li><span className="k k-zone" />Private DNS zone, dotted lines go to linked VNets</li>
+          {/* Lines are only explained when that kind of line is on the map right now. */}
+          {onMap.peering && <li><span className="k k-line" />Peering Connected <span className="k k-line half" />Initiated or access off</li>}
+          {onMap.goals && <li><span className="k k-flow ok" />Goal working <span className="k k-flow bad" />Goal broken, X marks where it stops</li>}
+          {onMap.failing && <li className="k-row"><span className="k k-flow bad" /><span>Red: where the traffic actually goes now, and it&apos;s failing</span></li>}
+          {onMap.shouldGo && <li className="k-row"><span className="k k-ghost" /><span>Grey dashed: where the traffic should go; it turns green once you fix it</span></li>}
+          {onMap.privateLink && <li className="k-row"><span className="k k-pl" /><span>Green dotted: the private link between a private endpoint and its storage account; it&apos;s always there and already works</span></li>}
+          {onMap.lastTest && <li className="k-row"><span className="k k-trace" /><span>Moving white dots: the path of the last test you ran</span></li>}
+          {onMap.zones && <li className="k-row"><span className="k k-zone" /><span>Private DNS zone. Grey dotted lines go to the networks linked to it</span></li>}
           <li>Orange pulse: what your last command changed. Drag to pan, Ctrl and scroll to zoom.</li>
         </ul>
         <button className="btn ghost" type="button" onClick={() => setTourStep(0)}>Replay the map tour</button>
@@ -694,6 +723,24 @@ export function LevelPlayer({ id }: { id: string }) {
             {mentor ? (
               <details className="background"><summary>Background</summary><p className="story">{level.story}</p></details>
             ) : <p className="story">{level.story}</p>}
+            {resources.length > 0 && (
+              <details className="background resources">
+                <summary>Resources ({resources.reduce((n, g) => n + g.items.length, 0)})</summary>
+                <p className="note">Everything in this lab, by type, as it is right now. Tap one to find it on the map.</p>
+                {resources.map((g) => (
+                  <div key={g.type} className="res-group">
+                    <span className="label">{g.type}</span>
+                    <ul>
+                      {g.items.map((r) => (
+                        <li key={r.name}>
+                          {r.sel ? <button type="button" onClick={() => { select(r.sel!); if (isPhone) setTab("map"); }}><b>{r.name}</b><span>{r.detail}</span></button> : <div><b>{r.name}</b><span>{r.detail}</span></div>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </details>
+            )}
 
             {/* The sandbox has no goals, so say what's in it and how to start, instead of leaving a blank lab. */}
             {level.playground && (
@@ -757,16 +804,12 @@ export function LevelPlayer({ id }: { id: string }) {
                   <span className="label" style={{ margin: 0 }}>How to work it</span>
                   <button type="button" className="help-toggle" aria-pressed={!helpOn} onClick={() => setHelp(!helpOn)}>{helpOn ? "Hide help" : "Show help"}</button>
                 </div>
-                {!helpOn && <p className="note" style={{ margin: "6px 0 0" }}>Help is hidden on every level. The steps still tick off as you go.</p>}
+                {!helpOn && <p className="note" style={{ margin: "6px 0 0" }}>Help is hidden on every level. Each step still says what to do and ticks off as you go, but not why, what to look for, or which tools to use.</p>}
                 <ol className="mentor">
                   {msteps.map((m, i) => (
                     <li key={m.id} className={`mstep${m.done ? " done" : ""}${i === current ? " now" : ""}`}>
                       <div className="mstep-head"><span className="mstep-n">{m.done ? "✓" : i + 1}</span><b>{m.title}</b></div>
-                      {i === current && helpOn && <p>{m.say}</p>}
-                      {i === current && helpOn && (m.portal || m.cmds || m.options) && (m.folded
-                        ? <details className="mstep-how"><summary>Show me how</summary><StepHow step={m} portal={view === "portal"} onType={typeIt} osSwitch={osSwitch} /></details>
-                        : <StepHow step={m} portal={view === "portal"} onType={typeIt} osSwitch={osSwitch} />)}
-                      {i === current && helpOn && m.tick && <p className="mstep-tick">{m.tick}</p>}
+                      {i === current && <StepItem step={m} brief={!helpOn} />}
                       {m.id === "cause" && i === current && cause0 && (
                         <div className="chips">
                           {causeChoices(level.tier, cause0.cause, level.id).map(([v, t]) => (
@@ -802,13 +845,46 @@ export function LevelPlayer({ id }: { id: string }) {
               </ol>
             )}
 
+            {walk.length > 0 && (
+              <details className="walk">
+                <summary>Full walkthrough</summary>
+                <p className="note">Every step to solve this level, from seeing it fail to checking the fix. Follow it in Cloud Shell or in the Portal, and switch any time to see the other way.</p>
+                <span className="mode-switch walk-tabs" role="tablist" aria-label="Walkthrough as">
+                  <button type="button" role="tab" aria-selected={wTab === "cmd"} className={wTab === "cmd" ? "on" : ""} onClick={() => setWalkTab("cmd")}>Command steps</button>
+                  <button type="button" role="tab" aria-selected={wTab === "portal"} className={wTab === "portal" ? "on" : ""} onClick={() => setWalkTab("portal")}>Portal steps</button>
+                </span>
+                {/* Lines that run on a VM come in Linux and Windows flavors. This is the same switch as above the shell, so the two never disagree. */}
+                {wTab === "cmd" && walk.some((w) => w.on) && <div className="mstep-os walk-os"><span>VM commands for</span>{osSwitch}</div>}
+                <ol className="walk-steps">
+                  {walk.filter((w, k) => walkOpen || k === 0 || w.phase === "see").map((w, k) => (
+                    <li key={k} className={`walk-step ${w.phase}`}>
+                      <span className="walk-phase">{WALK_PHASE[w.phase]}</span>
+                      {w.say && <p>{w.say}</p>}
+                      {wTab === "cmd" ? (
+                        <>
+                          <Where on={w.on} vm={session.current.vm} onType={typeIt} />
+                          <ol className="mstep-cmds">{w.cmds.map((c, j) => <li key={j}><CmdRow cmd={c} onType={typeIt} /></li>)}</ol>
+                        </>
+                      ) : <ol className="walk-portal">{w.portal.map((t, j) => <li key={j}>{t}</li>)}</ol>}
+                    </li>
+                  ))}
+                </ol>
+                {!walkOpen && (
+                  <div className="walk-reveal">
+                    <button type="button" className="btn" onClick={() => { sawFixRef.current = true; setWalkAll(true); }}>Show every step</button>
+                    <span className="note">{walk.length - 1} more step{walk.length === 2 ? "" : "s"}, including the fix. Seeing them counts as seeing the fix, so this run earns 1 star. Replay the level later for 3.</span>
+                  </div>
+                )}
+              </details>
+            )}
+
             {(hints > 0 || sawFix) && (
               <div className="hint-list">
-                {ladder.slice(0, hints).map((h, k) => <div key={k} className="hint"><span className="label" style={{ margin: 0 }}>{k === 0 ? "Hint (free)" : `Hint ${k + 1}`}</span><HintBody hint={h} portal={view === "portal"} os={os} onType={typeIt} /></div>)}
+                {ladder.slice(0, hints).map((h, k) => <HintCard key={k} hint={h} label={k === 0 ? "Hint (free)" : `Hint ${k + 1}`} st={st.current} portal={view === "portal"} os={os} onType={typeIt} repeat={k > 0 && !!hintLayer(h) && hintLayer(ladder[k - 1])?.name === hintLayer(h)?.name} />)}
                 {sawFix && (
                   <div className="hint the-fix">
                     <span className="label" style={{ margin: 0 }}>The fix</span>
-                    <ol className="fix-steps">{level.solution.filter((c) => c !== "exit").map((c, k) => <li key={k}><HintBody hint={c} portal={view === "portal"} os={os} onType={typeIt} /></li>)}</ol>
+                    <ol className="fix-steps">{level.solution.filter((c) => c !== "exit" && !c.startsWith("answer ")).map((c, k) => <li key={k}><HintBody hint={c} portal={view === "portal"} os={os} onType={typeIt} /></li>)}</ol>
                   </div>
                 )}
               </div>
@@ -916,7 +992,14 @@ export function LevelPlayer({ id }: { id: string }) {
             <h2 id="done-title">{level.title} solved</h2>
             <Stars n={finished} />
             <div className="stats"><span>Changes <b>{changes} (par {level.par})</b></span>{level.clock ? <span>Time <b>{mmss(elapsed)} (target {level.clock}:00)</b></span> : <span>Hints used <b>{hints}</b></span>}<span>XP earned <b>{finished * 50}</b></span></div>
-            {level.debrief && <div className="debrief"><div className="label">What was wrong</div><ul>{level.debrief.map((d, k) => <li key={k}>{d}</li>)}</ul></div>}
+            {issue.length > 0 && <div className="debrief issue"><div className="label">The issue</div><ul>{issue.map((d, k) => <li key={k}>{d}</li>)}</ul></div>}
+            {fixes.length > 0 && (
+              <div className="the-fix-card">
+                <div className="label">{level.fix ? "The fix" : "What you built"}</div>
+                <ol>{fixes.map((f, k) => <li key={k}><p>{f.what}</p><code>{f.cmd}</code></li>)}</ol>
+                {level.fix && <p className="note" style={{ margin: 0 }}>This is one way to fix it. If yours worked differently, it still counts.</p>}
+              </div>
+            )}
             {level.why && <div className="why"><div className="label">Why it worked</div><p style={{ margin: 0 }}>{level.why}</p></div>}
             <div className="lesson"><div className="label">Remember</div><p style={{ margin: 0 }}>{level.lesson}</p></div>
             <details className="sources"><summary>Read more on Microsoft Learn</summary><div className="links">{level.learn.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">{l.title}</a>)}</div></details>

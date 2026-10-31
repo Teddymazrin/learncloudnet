@@ -4,6 +4,9 @@ import { ACTIONS_ABOUT } from "./forms";
 export interface CmdNote { what: string; parts: [string, string][] }
 
 const AZ: [RegExp, string][] = [
+  // Before the plain vnet entries: "private-dns link vnet create" isn't creating a virtual network.
+  [/private-dns link vnet/, "Links a private DNS zone to a virtual network, so VMs there can resolve names in the zone."],
+  [/private-dns record-set a/, "Adds or changes an A record: a name in the zone that points to an IP address."],
   [/watcher test-ip-flow/, ACTIONS_ABOUT.ipflow],
   [/watcher show-next-hop/, ACTIONS_ABOUT.nexthop],
   [/watcher test-connectivity/, ACTIONS_ABOUT.conn],
@@ -19,8 +22,6 @@ const AZ: [RegExp, string][] = [
   [/nsg rule delete/, "Removes one rule from a network security group. The next matching rule in priority order decides instead."],
   [/route-table create/, "Creates a route table. Its routes only apply to subnets you attach it to."],
   [/route-table route delete/, "Removes one route from a route table. Traffic falls back to the next best matching route."],
-  [/private-dns link vnet/, "Links a private DNS zone to a virtual network, so VMs there can resolve names in the zone."],
-  [/private-dns record-set a/, "Adds or changes an A record: a name in the zone that points to an IP address."],
   [/storage account network-rule/, "Adds a rule to a storage account's firewall: an IP range or a subnet that's allowed in. Network rules only take effect when the default action is Deny."],
   [/storage account show/, "Shows a storage account's settings, including its firewall's default action and network rules."],
   [/dns-resolver inbound-endpoint create/, "Creates an inbound endpoint: a private IP in your network that answers DNS queries from on-premises or other networks, using Azure DNS and the private zones linked to that network."],

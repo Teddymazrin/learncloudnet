@@ -10,7 +10,8 @@ export type Selection =
   | { kind: "subnet"; vnet: string; subnet: string }
   | { kind: "host"; id: string }
   | { kind: "peer"; a: string; b: string }
-  | { kind: "zone"; id: string };
+  | { kind: "zone"; id: string }
+  | { kind: "service"; id: string };
 
 export const selKey = (s: Selection | null) => {
   if (!s) return "";
@@ -133,6 +134,25 @@ export const RouteIc = ({ x, y }: { x: number; y: number }) => <g transform={`tr
 export const VnetIc = ({ x, y }: { x: number; y: number }) => (
   <g transform={`translate(${x} ${y})`} className="ic-vnet"><rect x={0} y={0} width={34} height={18} rx={4} /><path d="M8 5 l-4 4 l4 4 M26 5 l4 4 l-4 4" /><circle cx={12.5} cy={9} r={1.6} /><circle cx={17} cy={9} r={1.6} /><circle cx={21.5} cy={9} r={1.6} /></g>
 );
+
+/** Whether the last test went along the same path as a goal line already on the map. */
+export const traceOverlaps = (trace: TraceResult, flows: FlowResult[]) =>
+  flows.some((f) => !!f.trace && !(f.flow.want === "closed" && !f.ok) && f.trace.path.join("|") === trace.path.join("|"));
+
+/** Which kinds of line are on the map right now, so the key only explains what you can see. */
+export function linesOnMap(st: State, flows: FlowResult[], trace: TraceResult | null) {
+  const drawn = flows.filter((f) => !(f.flow.want === "closed" && !f.ok));
+  return {
+    goals: drawn.length > 0,
+    failing: drawn.some((f) => !f.good),
+    // The grey dashed line: a broken connection that's meant to reach somewhere other than where it stops.
+    shouldGo: drawn.some((f) => !f.ok && !!(f.target ?? f.expected) && (f.trace?.path.at(-1) ?? f.flow.from) !== (f.target ?? f.expected)),
+    privateLink: Object.values(st.publicEndpoints).some((e) => !!st.hosts[`pe-${e.name}`]),
+    lastTest: !!trace && trace.path.length > 1 && !traceOverlaps(trace, flows),
+    peering: Object.keys(st.peerings).length > 0,
+    zones: Object.keys(st.zones).length > 0,
+  };
+}
 
 /** Which VNet columns hold what the player should look at now, most urgent signal first. */
 function focusColumns(st: State, order: string[], changed: Set<string>, flows: FlowResult[], trace: TraceResult | null): number[] {
@@ -366,6 +386,39 @@ export function NetworkMap({ st, trace, flows = [], changed = new Set(), selecte
   });
   H = H + (zones.length ? 18 + zones.length * 48 : -6) + 10;
 
+  // Storage accounts: Azure services outside your networks, with a public endpoint. A private endpoint links one into a subnet.
+  const svcs = Object.entries(st.publicEndpoints);
+  const svcAt: Record<string, { x: number; y: number }> = {};
+  const linkEls: ReactNode[] = [];
+  let svcRows = 0;
+  const svcEls = svcs.map(([ip, ep], si) => {
+    const access = !ep.publicAccess ? "public access disabled" : ep.defaultAction === "Deny" ? "selected networks only" : "public access on";
+    const sub = `${ep.name}.blob.core.windows.net · public IP ${ip} · ${access}`;
+    const sw = Math.min(W - 60, Math.max(250, sub.length * 6.2 + 56));
+    const per = Math.max(1, Math.floor((W - 40) / (sw + 16)));
+    const row = Math.floor(si / per), col = si % per, inRow = Math.min(per, svcs.length - row * per);
+    const sx = (W - inRow * sw - (inRow - 1) * 16) / 2 + col * (sw + 16), sy = H + 14 + row * 58;
+    svcAt[ip] = { x: sx + sw / 2, y: sy };
+    svcRows = Math.max(svcRows, row + 1);
+    const key = `service:${ep.name}`;
+    const pe = Object.values(st.hosts).find((h) => h.kind === "pe" && h.name === `pe-${ep.name}`);
+    const c = pe && chips[pe.name];
+    if (c) {
+      const d = `M${c.x} ${c.b} C${c.x} ${c.b + 60} ${sx + sw / 2} ${sy - 50} ${sx + sw / 2} ${sy}`;
+      linkEls.push(<g key={`pl-${ep.name}`} className="pl-link"><title>{`${pe!.name} is ${ep.name}'s private endpoint (Private Link)`}</title><path d={d} /></g>);
+    }
+    return (
+      <g key={ep.name} className="svc" {...act({ kind: "service", id: ep.name })} aria-label={`Inspect storage account ${ep.name}`}>
+        <title>{`Storage account ${ep.name}: tap to inspect`}</title>
+        <rect x={sx} y={sy} width={sw} height={44} rx={8} className={cls("svc-box", key) + (ep.publicAccess ? "" : " locked")} />
+        <BadgeIcon x={sx + 4} y={sy + 6} text="ST" cls="b-st" />
+        <text x={sx + 46} y={sy + 19} className="svc-t">{`Storage account · ${ep.name}`}{pe ? <tspan className="svc-pl">{`  ⇠ Private Link via ${pe.name}`}</tspan> : null}</text>
+        <text x={sx + 46} y={sy + 35} className="svc-s mono">{sub}</text>
+      </g>
+    );
+  });
+  if (svcRows) H += 14 + svcRows * 58;
+
   // Live goal flows: always drawn, re-checked after every command.
   const flowEls: ReactNode[] = [];
   const flowMarks: ReactNode[] = [];
@@ -381,11 +434,19 @@ export function NetworkMap({ st, trace, flows = [], changed = new Set(), selecte
     if (pts.length) flowD[fi] = { d, ok: fr.ok };
     if (pts.length > 1) flowEls.push(<path key={`f${fi}`} d={d} className={`flow ${color}${celebrate.has(fi) ? " glow" : ""}`} />);
     const end = pts[pts.length - 1];
+    // The name resolved to a storage account's public IP: draw the request going there, outside your networks, where it's refused.
+    const svcHit = !fr.target && fr.targetIp ? svcAt[fr.targetIp] : undefined;
+    if (svcHit && end) {
+      flowEls.push(<path key={`s${fi}`} d={`M${end.x} ${end.y} L${svcHit.x} ${svcHit.y}`} className={`flow ${color}`} />);
+      const t = `${fr.flow.dns} → ${fr.targetIp} (public)`, w = t.length * 6.2 + 12, lx = (end.x + svcHit.x) / 2, ly = (end.y + svcHit.y) / 2;
+      flowMarks.push(<g key={`p${fi}`} className={`flow-name ${color}`}><rect x={lx - w / 2} y={ly - 11} width={w} height={16} rx={8} /><text x={lx} y={ly + 1} textAnchor="middle">{t}</text></g>);
+    }
     if (!fr.ok && tgt && end && (Math.abs(tgt.x - end.x) > 1 || Math.abs(tgt.y - end.y) > 1)) {
       flowEls.push(<path key={`g${fi}`} d={`M${end.x} ${end.y} L${tgt.x} ${tgt.y}`} className="flow ghost" />);
       // A name that doesn't lead anywhere yet: label the dashed line with it, so it's clear where it's meant to go.
       if (fr.flow.dns && !fr.target) {
-        const lx = (end.x + tgt.x) / 2, ly = (end.y + tgt.y) / 2 + 4, t = `${fr.flow.dns}?`, w = t.length * 6.4 + 12;
+        const want = st.hosts[fr.expected ?? ""]?.ip;
+        const lx = (end.x + tgt.x) / 2, ly = (end.y + tgt.y) / 2 + 4, t = svcHit && want ? `should resolve to ${want}` : `${fr.flow.dns}?`, w = t.length * 6.4 + 12;
         flowMarks.push(<g key={`n${fi}`} className="flow-name"><rect x={lx - w / 2} y={ly - 11} width={w} height={16} rx={8} /><text x={lx} y={ly + 1} textAnchor="middle">{t}</text></g>);
       }
     }
@@ -400,7 +461,7 @@ export function NetworkMap({ st, trace, flows = [], changed = new Set(), selecte
       </g>,
     );
     if (!fr.ok) {
-      const X = end.x, Y = end.y;
+      const X = svcHit && !fr.ok ? svcHit.x : end.x, Y = svcHit ? svcHit.y : end.y;
       flowMarks.push(<g key={`x${fi}`}><line x1={X - 6} y1={Y - 6} x2={X + 6} y2={Y + 6} className="x-mark" /><line x1={X - 6} y1={Y + 6} x2={X + 6} y2={Y - 6} className="x-mark" /></g>);
     }
   });
@@ -410,7 +471,8 @@ export function NetworkMap({ st, trace, flows = [], changed = new Set(), selecte
   if (trace?.path.length) {
     const pts = trace.path.map((n) => chips[n]).filter(Boolean);
     traceD = pts.map((p, k) => `${k ? "L" : "M"}${p.x} ${p.b + 4}`).join(" ");
-    if (pts.length > 1) traceEl = <path d={traceD} className={`trace ${trace.ok ? "ok" : "bad"}`} />;
+    // A test along the same path as a goal line adds nothing but a second line on top of it, so leave it out.
+    if (pts.length > 1 && !traceOverlaps(trace, flows)) traceEl = <path d={traceD} className={`trace ${trace.ok ? "ok" : "bad"}`} />;
   }
   const pk = packet?.from === "trace" ? (traceD && trace ? { d: traceD, ok: trace.ok } : null) : packet ? flowD[packet.index] ?? null : null;
   let VX = 0, VW = W;
@@ -442,7 +504,9 @@ export function NetworkMap({ st, trace, flows = [], changed = new Set(), selecte
       {groupEls}
       {body}
       {lines}
+      {linkEls}
       {zoneEls}
+      {svcEls}
       {flowEls}
       {traceEl}
       {flowMarks}

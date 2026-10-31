@@ -52,3 +52,30 @@ describe("What's this?", () => {
     for (const c of ["nc -zv 10.1.1.4 443", "ssh vm-web"]) expect(whatsThis(toWindows(c)), c).not.toBeNull();
   });
 });
+
+describe("Linux commands on a Windows VM", () => {
+  const setup = () => {
+    const l = LEVELS.find((x) => x.id === "wrong-side-of-the-glass")!;
+    const st = l.setup();
+    const s = newSession("windows");
+    run(st, "ssh vm-spoke1", s);
+    return { st, s };
+  };
+  it("fail as errors and say the VM runs Windows, instead of looking like they worked", () => {
+    const { st, s } = setup();
+    for (const c of ["nc -zv stlogs01.blob.core.windows.net 443", "ufw status", "ping 10.0.1.4", "curl -sI https://stlogs01.blob.core.windows.net"]) {
+      const r = run(st, c, s);
+      expect(r.error, c).toBe(true);
+      expect(s.log.at(-1)?.ok, c).toBe(false);
+    }
+    expect(run(st, "nc -zv 10.0.3.4 443", s).text).toMatch(/Linux command, and vm-spoke1 runs Windows/);
+  });
+  it("nslookup is nslookup.exe, with its own output, not Resolve-DnsName's table", () => {
+    const { st, s } = setup();
+    const ns = run(st, "nslookup stlogs01.blob.core.windows.net", s).text;
+    expect(ns).toMatch(/^Server:  UnKnown/);
+    expect(ns).toMatch(/Address:  203\.0\.113\.10/);
+    expect(ns).not.toMatch(/NameHost/);
+    expect(run(st, "Resolve-DnsName stlogs01.blob.core.windows.net", s).text).toMatch(/NameHost/);
+  });
+});

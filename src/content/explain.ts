@@ -1,7 +1,7 @@
 // Plain-language explainers for everything on the map. Each fact comes from the linked Microsoft Learn page.
 import type { LearnLink } from "./types";
 
-export type ExplainKind = "vnet" | "subnet" | "vm" | "nva" | "pe" | "peer" | "zone" | "nsg" | "udr" | "fw" | "dns" | "dnsin" | "gw" | "bastion" | "lb";
+export type ExplainKind = "vnet" | "subnet" | "vm" | "nva" | "pe" | "peer" | "zone" | "nsg" | "udr" | "fw" | "dns" | "dnsin" | "gw" | "bastion" | "lb" | "storage";
 
 export interface Explainer { name: string; what: string; why: string; learn: LearnLink[] }
 
@@ -85,6 +85,12 @@ export const EXPLAIN: Record<ExplainKind, Explainer> = {
     what: "A DNS zone that only virtual networks linked to it can query. Private endpoint zones use names like privatelink.blob.core.windows.net.",
     why: "If the VNet doing the lookup isn't linked, Azure DNS answers with the public IP instead of the private endpoint.",
     learn: [L("What is a virtual network link?", "https://learn.microsoft.com/azure/dns/private-dns-virtual-network-links"), L("Troubleshoot private endpoint DNS", "https://learn.microsoft.com/troubleshoot/azure/private-link/troubleshoot-private-endpoint-dns-resolution")],
+  },
+  storage: {
+    name: "Storage account",
+    what: "An Azure service, not something inside your virtual network. It always has a public endpoint, like stlogs01.blob.core.windows.net, with a public IP. A private endpoint gives it a second, private IP inside your network.",
+    why: "Public network access decides who may use the public endpoint. When it's disabled, only traffic through a private endpoint gets in, and anything that reaches the public IP gets 403 Forbidden.",
+    learn: [L("Use private endpoints for Azure Storage", "https://learn.microsoft.com/azure/storage/common/storage-private-endpoints"), L("Configure Azure Storage firewalls and virtual networks", "https://learn.microsoft.com/azure/storage/common/storage-network-security")],
   },
   nsg: {
     name: "Network security group (NSG)",

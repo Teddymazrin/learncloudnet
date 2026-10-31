@@ -203,7 +203,7 @@ export function run(st: State, line: string, session: Session): RunResult {
     if (head === "ssh" && words[1]) { const was = session.vm; session.vm = null; const r = run(st, raw, session); if (session.vm) r.text = `lab: left ${was}.\n${r.text}`; else session.vm = was; return r; }
     if (session.os === "windows") {
       const { canon, ...r } = winCmd(st, session.vm, tokens);
-      session.log.push({ raw, words, flags, ok: !/is not recognized|^lab: usage/.test(r.text), inVm: session.vm, canon });
+      session.log.push({ raw, words, flags, ok: !r.error && !/is not recognized|^lab: usage/.test(r.text), inVm: session.vm, canon });
       return r;
     }
     const r = vmCmd(st, session.vm, tokens);

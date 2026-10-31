@@ -6,6 +6,7 @@ import { EXPLAIN, type ExplainKind } from "@/content/explain";
 import type { FlowResult } from "@/content/flows";
 import type { Direction, State } from "@/sim/types";
 import type { Selection } from "./NetworkMap";
+import { endpointFor } from "@/lib/resources";
 
 function Rules({ st, nsg, dir, marks = {}, skips = {} }: { st: State; nsg: string; dir: Direction; marks?: Record<string, string[]>; skips?: Record<string, string[]> }) {
   return (
@@ -236,6 +237,21 @@ export function Inspector({ st, sel, onClose, flows = [], explained = [], action
         <div className="label" style={{ marginTop: 10 }}>Linked virtual networks</div>
         {Object.entries(z.links).map(([n, l]) => <Row key={n} k={n} v={`${l.vnet}, auto-registration ${l.reg ? "on" : "off"}`} />)}
         <p className="note">Only linked virtual networks can resolve names in this zone.</p>
+      </>
+    );
+  } else if (sel.kind === "service" && Object.values(st.publicEndpoints).some((e) => e.name === sel.id)) {
+    const [ip, ep] = Object.entries(st.publicEndpoints).find(([, e]) => e.name === sel.id)!;
+    const pe = endpointFor(st, ep.name);
+    title = `Storage account ${ep.name}`;
+    kind = "storage";
+    body = (
+      <>
+        <Row k="Public name" v={`${ep.name}.blob.core.windows.net`} />
+        <Row k="Public IP" v={ip} />
+        <Row k="Public network access" v={!ep.publicAccess ? "Disabled" : ep.defaultAction === "Deny" ? "Enabled from selected networks" : "Enabled from all networks"} />
+        {ep.publicAccess && ep.defaultAction === "Deny" && <Row k="Allowed subnets" v={(ep.vnetRules ?? []).map((r) => `${r.vnet}/${r.subnet}`).join(", ") || "none"} />}
+        <Row k="Private endpoint" v={pe ? `${pe.name}, ${pe.ip} in ${pe.vnet}` : "none"} />
+        <p className="note">{!ep.publicAccess ? `Requests that reach ${ip} are refused with 403. Clients must resolve ${ep.name}.blob.core.windows.net to the private endpoint's IP instead.` : "Requests to the public IP are checked against these settings."}</p>
       </>
     );
   } else return null;

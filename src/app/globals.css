@@ -189,8 +189,17 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; text-wra
 .zone rect { fill: var(--surface); stroke: var(--line); stroke-dasharray: 3 3; }
 .zone text { fill: var(--muted); font-size: 11px; }
 .zone-link { stroke: var(--muted); stroke-dasharray: 2 4; fill: none; }
-.trace { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 8 6; animation: march 0.9s linear infinite; }
-.trace.ok { stroke: var(--ok); } .trace.bad { stroke: var(--bad); }
+.svc-box { fill: var(--surface); stroke: var(--accent); stroke-width: 1.5; }
+.svc-box.locked { stroke-dasharray: 5 3; }
+.svc .svc-t { fill: var(--ink); font-size: 12.5px; font-weight: 600; }
+.svc .svc-pl { fill: var(--muted); font-weight: 400; font-size: 11px; }
+.svc .svc-s { fill: var(--muted); font-size: 10.5px; }
+.b-st rect { fill: var(--accent2); }
+.pl-link path { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 2 4; fill: none; }
+.flow-name.bad rect { stroke: var(--bad); stroke-dasharray: none; }
+.flow-name.bad text { fill: var(--bad); }
+/* The last test: moving white dots, so it never reads as a goal line or the grey "should go here" line. */
+.trace { fill: none; stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 0.1 6.9; animation: march 0.9s linear infinite; }
 .x-mark { stroke: var(--bad); stroke-width: 3; stroke-linecap: round; }
 .empty-map { fill: var(--muted); font-size: 13px; }
 .empty-map.small { font-size: 11.5px; }
@@ -247,7 +256,7 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; text-wra
 .flow-tag.bad rect { fill: var(--bad-soft); stroke: var(--bad); }
 .flow-tag text { font-size: 11px; font-weight: 600; font-family: var(--font-mono); }
 .flow-tag.ok text { fill: var(--ok); } .flow-tag.bad text { fill: var(--bad); }
-.trace { pointer-events: none; stroke-width: 2; opacity: 0.8; }
+.trace { pointer-events: none; opacity: 0.9; }
 .x-mark { pointer-events: none; }
 .peer-hit { stroke: transparent; stroke-width: 16; fill: none; }
 .sel { stroke: var(--accent) !important; stroke-width: 2.5 !important; }
@@ -296,6 +305,9 @@ table.mini tr.hit td:last-child { color: var(--warn); font-weight: 600; }
 .map-key summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
 .map-key ul { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
 .map-key li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* A swatch with a sentence beside it: keep the swatch on the first line, and let the words wrap next to it. */
+.map-key li.k-row { flex-wrap: nowrap; align-items: baseline; }
+.map-key li.k-row .k { position: relative; top: -3px; }
 .k { display: inline-block; flex: none; }
 .k-rg { width: 22px; height: 14px; border: 1.5px dashed var(--accent); opacity: .7; border-radius: 3px; }
 .k-vnet { width: 22px; height: 14px; border: 1.5px dashed var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border-radius: 4px; }
@@ -307,6 +319,9 @@ table.mini tr.hit td:last-child { color: var(--warn); font-weight: 600; }
 .k-dot.vm { background: var(--accent); } .k-dot.nva { background: var(--nva); } .k-dot.pe { background: var(--ok); }
 .k-line { width: 22px; border-top: 2px solid var(--accent); } .k-line.half { border-top: 2px dashed var(--warn); }
 .k-flow { width: 22px; border-top: 3px solid var(--ok); } .k-flow.bad { border-top: 3px dotted var(--bad); }
+.k-ghost { width: 22px; border-top: 2px dashed var(--muted); opacity: 0.8; }
+.k-pl { width: 22px; border-top: 2px dotted var(--ok); }
+.k-trace { width: 22px; border-top: 3px dotted var(--ink); }
 .k-zone { width: 22px; height: 12px; border: 1.5px dashed var(--line); border-radius: 3px; }
 .tour-vnet .v-box, .tour-subnet .s-box, .tour-host .h-box { stroke: var(--warn); stroke-width: 3; stroke-dasharray: none; }
 .tour-tag .tag rect { stroke: var(--accent); stroke-width: 2; }
@@ -405,9 +420,11 @@ ol.steps { list-style: none; margin: 0; padding: 0; }
 
 .map-head { align-items: center; margin-bottom: 6px; }
 .map-key { position: relative; margin: 0; }
-.map-key > summary { list-style: none; cursor: pointer; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+/* A labeled pill in the accent color, so the key is easy to spot on every map. */
+.map-key > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.map-key .mk-q { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 800; }
 .map-key > summary::-webkit-details-marker { display: none; }
-.map-key > summary:hover, .map-key[open] > summary { color: var(--accent); border-color: var(--accent); }
+.map-key > summary:hover, .map-key[open] > summary { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 32%, transparent); }
 .map-key-body { position: absolute; right: 0; top: 30px; z-index: 6; width: min(380px, 80vw); background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: 0 12px 32px color-mix(in srgb, #000 22%, transparent); }
 .map-key-body ul { margin: 0 0 10px; }
 
@@ -1067,3 +1084,60 @@ table.mini tr.skip-row td { position: sticky; left: 0; white-space: normal; colo
 .watch-row input { flex: 1 1 110px; }
 .watch-row .watch-port { flex: 0 0 56px; width: 56px; }
 .watch-row .btn { padding: 5px 12px; font-size: 13px; }
+
+/* Resources: every resource in the lab, by type */
+.resources .res-group { margin-top: 10px; }
+.resources .res-group .label { margin: 0 0 4px; }
+.resources ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.resources li > button, .resources li > div { display: grid; gap: 2px; width: 100%; text-align: left; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
+.resources li > button { cursor: pointer; }
+.resources li > button:hover, .resources li > button:focus-visible { border-color: var(--accent); }
+.resources li b { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.resources li span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Where a step's lines run, and how to get there */
+.where { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 6px 0 4px; font-size: 12.5px; }
+.where-chip { font-family: var(--font-mono); font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--accent2); color: var(--accent2); }
+.where-note { color: var(--muted); }
+.where.away .where-chip { border-color: var(--warn); color: var(--warn); }
+.where .mstep-cmds { flex-basis: 100%; margin: 2px 0 4px; }
+
+/* Full walkthrough: command steps and Portal steps */
+details.walk { margin: 12px 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+details.walk summary { cursor: pointer; color: var(--accent2); font-weight: 600; font-size: 14px; }
+.walk-tabs { display: inline-flex; margin: 4px 0 8px; }
+.walk-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: walk; }
+.walk-step { counter-increment: walk; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+.walk-step p { margin: 4px 0; font-size: 13.5px; }
+.walk-phase { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.walk-phase::before { content: counter(walk) ". "; }
+.walk-step.fix .walk-phase { color: var(--warn); }
+.walk-step.check .walk-phase { color: var(--ok); }
+.walk-portal { margin: 4px 0 0; padding-left: 20px; font-size: 13px; display: grid; gap: 3px; }
+.walk-reveal { display: grid; gap: 6px; margin-top: 10px; justify-items: start; }
+
+/* How to work it: each step as an action item */
+.mstep-item { display: grid; gap: 6px; margin-top: 6px; }
+.mstep-item p { margin: 0; }
+.mstep-say { font-size: 14px; }
+.mstep-why, .mstep-look, .mstep-tools { font-size: 13px; color: var(--muted); }
+.mstep-why b, .mstep-look b, .mstep-tools b { display: block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--accent2); margin-bottom: 1px; }
+.mstep-tools ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* Hints with context */
+.hint-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hint-layer { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--accent2); color: var(--accent2); }
+.hint-why { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); }
+.hint-why b { display: block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--accent2); }
+.hint-live { margin-top: 6px; font-size: 12.5px; }
+.hint-live summary { cursor: pointer; color: var(--accent2); }
+.hint-live pre { margin: 6px 0 0; padding: 8px; background: var(--surface-2); border-radius: 6px; overflow-x: auto; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.4; }
+
+/* Solved card: the issue and the fix */
+.debrief.issue { border-left: 3px solid var(--bad); }
+.debrief.issue .label { color: var(--bad); }
+.the-fix-card { border: 1px solid var(--line); border-left: 3px solid var(--ok); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+.the-fix-card .label { margin: 0; color: var(--ok); }
+.the-fix-card ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.the-fix-card li p { margin: 0 0 4px; }
+.the-fix-card code { display: block; font-family: var(--font-mono); font-size: 12px; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; overflow-wrap: anywhere; }

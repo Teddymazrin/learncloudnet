@@ -3,7 +3,7 @@
 import type { Level } from "@/content/types";
 import { evalFlow, type FlowResult } from "@/content/flows";
 import { newSession, type Session, type State } from "@/sim/types";
-import { toWindows, type Os } from "@/sim/windows";
+import type { Os } from "@/sim/windows";
 
 /** Answers for "what's stopping it?", one per place a connection can fail in the simulator. */
 export const CAUSES: [string, string][] = [
@@ -70,26 +70,29 @@ const isTest = (e: LogEntry) => e.ok && ((!!e.inVm && TESTS.test((e.canon ?? e.r
 const LOOKS = /watcher (test-ip-flow|show-next-hop|test-connectivity)|show-effective-route-table|list-effective-nsg|\b(list|show)\b/;
 const isLook = (e: LogEntry) => e.ok && ((e.raw.startsWith("az ") && LOOKS.test(e.raw)) || (!!e.inVm && /^(ufw status|ss |netstat|systemctl (status|--failed))/.test(e.raw.trim())) || /run-command invoke/.test(e.raw));
 
-/** One step of the process: why you do it, exactly how in the mode you're in, and what ticks it off. */
+/** One step of the process, as an action item: what to do, why it matters, what to look for, and the tools that do it.
+ *  The exact commands and clicks live in the walkthrough, so this stays the method, not the answer. */
 export interface MentorStep {
   id: "see" | "look" | "cause" | "fix" | "explain";
   title: string;
   done: boolean;
+  /** The action, in one or two sentences. */
   say: string;
-  /** Where to click in the Portal. */
-  portal?: string;
-  /** The Cloud Shell lines to type, one per row. */
-  cmds?: string[];
-  /** Keep the how folded under "Show me how", so working it out yourself comes first. */
-  folded?: boolean;
+  /** Why this step matters. */
+  why?: string;
+  /** What the result tells you, so you know what you're looking at. */
+  lookFor?: string;
+  /** Tools that do it, each named with where it runs: a VM, Cloud Shell, or the Portal. Names only, no full commands. */
+  tools?: string[];
   /** What makes the step tick, so you're never left guessing. */
   tick?: string;
-  /** A choice of checks, each with where to click and what to type. */
-  options?: StepOption[];
-  /** A line to run before any of the options, such as leaving the VM. */
-  before?: { label: string; cmds: string[] };
 }
-export interface StepOption { label: string; portal: string; cmds: string[] }
+
+/** What to type to get from where the shell is (a VM, or Cloud Shell when null) to where a command runs. */
+export function hopTo(vm: string | null, on: string | undefined): string[] {
+  if (!on) return vm ? ["exit"] : [];
+  return vm === on ? [] : vm ? ["exit", `ssh ${on}`] : [`ssh ${on}`];
+}
 const ip4 = (s: string) => /^\d+\.\d+\.\d+\.\d+$/.test(s);
 
 const target = (st: State, f: FlowResult) => f.flow.dns ?? (f.targetIp ?? (f.flow.to ? st.hosts[f.flow.to]?.ip : "") ?? "");
@@ -101,20 +104,26 @@ export function mentorSteps(level: Level, opts: { st: State; log: LogEntry[]; fl
   const from = first?.flow.from ?? "";
   const tgt = first ? target(st, first) : "";
   const fromVm = !!first && st.hosts[from]?.kind === "vm";
+  const win = opts.os === "windows";
 
-  // Step 1: reproduce it from where the user sits.
-  const see: MentorStep = { id: "see", title: "See it fail", done: log.some(isTest), say: "Prove the problem yourself before you change anything. Reports are often wrong." };
+  // Step 1: reproduce it from where the problem is.
+  const see: MentorStep = { id: "see", title: "See it fail", done: log.some(isTest), say: "", why: "Reports are often wrong or vague. Seeing the failure yourself tells you exactly what breaks, and gives you a test to rerun after the fix." };
   if (first && fromVm) {
-    const hop = vm === from ? [] : vm ? ["exit", `ssh ${from}`] : [`ssh ${from}`];
-    const test = first.flow.dns ? [`nslookup ${first.flow.dns}`, `nc -zv ${first.flow.dns} ${first.flow.port}`] : [`nc -zv ${tgt} ${first.flow.port}`];
-    see.portal = `Diagnose, then Connection troubleshoot. Source ${from}, destination ${tgt}, port ${first.flow.port}. Run it.`;
-    see.cmds = [...hop, ...test].map((c) => (opts.os === "windows" ? toWindows(c) : c));
-    see.tick = vm === from ? `Ticks off when the test runs. You're already on ${from}.` : `Ticks off when the test runs on ${from}.`;
+    see.say = first.flow.dns ? `From ${from}, look up ${first.flow.dns}, then try to connect to it on port ${first.flow.port}.` : `From ${from}, try to connect to ${tgt} on port ${first.flow.port}.`;
+    see.lookFor = first.flow.dns
+      ? `The address the name gives. ${st.hosts[first.flow.expect ?? ""]?.ip ? `${st.hosts[first.flow.expect!].ip} (${first.flow.expect}) is what it should be. ` : ""}Anything else, like a public IP or no answer, means the problem starts with DNS.`
+      : "Whether the connection opens. A timeout means something on the path drops it. Refused means the packet arrived but nothing is listening.";
+    see.tools = [
+      `On ${from}: ${first.flow.dns ? (win ? "Resolve-DnsName, then Test-NetConnection" : "nslookup, then nc") : win ? "Test-NetConnection" : "nc"}. Get there with ssh ${from} in Cloud Shell${vm === from ? ". You're already on it" : ""}.`,
+      `Portal: Diagnose, then Connection troubleshoot, from ${from}.`,
+    ];
+    see.tick = `Ticks off when a test runs on ${from}.`;
   } else {
     // The traffic doesn't start on a lab VM, so there's nothing to log in to: the map's own test is the way to see it.
     see.done = see.done || opts.explained;
-    see.say = `This traffic starts outside the lab VMs, so you can't log in to test it. Watch it instead.`;
-    see.portal = "Tap Explain on the red line under the map.";
+    see.say = "This traffic starts outside the lab VMs, so you can't log in to test it. Watch it on the map instead.";
+    see.lookFor = "The step where the line turns red, and the reason Explain gives for it.";
+    see.tools = ["Explain on the red line under the map."];
     see.tick = "Ticks off when you tap Explain on the broken line.";
   }
 
@@ -123,36 +132,31 @@ export function mentorSteps(level: Level, opts: { st: State; log: LogEntry[]; fl
   const diag = level.hints.map(hintParts).find((h) => h.cmd && DIAG.test(h.cmd));
   const look: MentorStep = {
     id: "look", title: "Find where it stops", done: log.some((e, i) => i !== firstTest && isLook(e)),
-    say: level.tool ?? "Pick one tool that checks one layer: names, routes, security rules, the peering, or the VM itself. Each tool in Diagnose says what it checks.",
+    say: level.tool ?? "Check one layer at a time until one says no: names, routes, security rules, the peering, or the VM itself.",
+    why: "Each tool checks one layer. Ruling layers out one by one is faster than guessing, and it tells you exactly what to change.",
+    lookFor: "The first layer that says no: a security rule that denies, a next hop of None or an address where nothing lives, a peering that isn't Connected, or a name that gives the wrong address.",
     tick: "Ticks off when you run a Diagnose tool, or a list or show command.",
   };
-  // "Show me how": a short menu of layer checks for this connection, not the answer. The level's own suggestion comes first.
-  const win = (c: string) => (opts.os === "windows" ? toWindows(c) : c);
-  const az = (c: string) => [c];
-  const options: StepOption[] = [];
-  if (diag?.cmd && diag.portal) options.push({ label: "Start with this one", portal: `${diag.portal[0].toUpperCase()}${diag.portal.slice(1)}.`, cmds: az(diag.cmd) });
+  const tools: string[] = [];
+  if (diag?.portal) tools.push(`Start here: ${diag.portal}.`);
   if (first && fromVm) {
-    const src = st.hosts[from];
     const ip = first.targetIp ?? (ip4(tgt) ? tgt : null);
     const dst = first.target ? st.hosts[first.target] : Object.values(st.hosts).find((h) => h.ip === ip);
-    const port = first.flow.port;
-    const have = (re: RegExp) => options.some((o) => o.cmds.some((c) => re.test(c)));
-    if (first.flow.dns) {
-      const hop = vm === from ? [] : vm ? ["exit", `ssh ${from}`] : [`ssh ${from}`];
-      options.push({ label: "Names: what address does the name give?", portal: `Names aren't in Diagnose. Switch to Cloud Shell, then: ssh ${from}, and look the name up.`, cmds: [...hop, win(`nslookup ${first.flow.dns}`)] });
-    }
-    if (ip && !have(/show-next-hop/)) options.push({ label: "Routes: where does Azure send it?", portal: `Diagnose, then Next hop. VM ${from}, destination ${ip}.`, cmds: az(`az network watcher show-next-hop -g rg-lab --vm ${from} --source-ip ${src.ip} --dest-ip ${ip}`) });
-    if (ip && dst?.kind === "vm" && !have(/test-ip-flow/)) options.push({ label: "Security rules: is it let in?", portal: `Diagnose, then IP flow verify. VM ${dst.name}, inbound, TCP, local port ${port}, remote ${src.ip}.`, cmds: az(`az network watcher test-ip-flow -g rg-lab --vm ${dst.name} --direction Inbound --protocol TCP --local ${dst.ip}:${port} --remote ${src.ip}:*`) });
-    if (!have(/show-effective-route-table/)) options.push({ label: `Every route on ${from}`, portal: `Diagnose, then Effective routes on ${from}.`, cmds: az(`az network nic show-effective-route-table -g rg-lab --name ${src.nic}`) });
+    if (first.flow.dns) tools.push(`Names: ${win ? "Resolve-DnsName" : "nslookup"} on ${from}.`);
+    if (ip) tools.push(`Routes: Next hop in Diagnose, from ${from} to ${ip}.`);
+    if (ip && dst?.kind === "vm") tools.push(`Security rules: IP flow verify in Diagnose, on ${dst.name}.`);
+    tools.push(`Every route: Effective routes in Diagnose, on ${from}.`);
   }
-  if (options.length) { look.options = options; look.folded = true; if (vm) look.before = { label: `You're on ${vm}. az commands run in Cloud Shell, so leave the VM first`, cmds: ["exit"] }; }
+  if (tools.length) look.tools = [...new Set(tools)];
 
   const steps: MentorStep[] = [see, look];
-  if (opts.hasCause) steps.push({ id: "cause", title: "Name the cause", done: opts.causeOk, say: "What did the tool show? Say it out loud before you touch anything.", tick: "Ticks off when you pick what the evidence shows." });
+  if (opts.hasCause) steps.push({ id: "cause", title: "Name the cause", done: opts.causeOk, say: "Pick what the evidence shows.", why: "Saying the cause before you change anything stops you fixing the wrong thing.", lookFor: "Where the packet stopped in step 2, not where you guessed it would.", tick: "Ticks off when you pick what the evidence shows." });
   steps.push({
     id: "fix", title: "Fix it and test again", done: opts.goalsDone,
-    say: "Change only the thing the evidence points at, nothing else. Then run your test from step 1 again.",
-    portal: "Tap the resource the tool named on the map. Its settings open here, ready to change.",
+    say: "Change only the thing the evidence points at, then rerun your test from step 1.",
+    why: "One change at a time tells you what fixed it. Changing several things hides the cause and can break something else.",
+    lookFor: "The lines under Your job tick off, the line under the map turns green, and nothing under Without breaking turns red.",
+    tools: ["Portal: tap the resource on the map. Its settings open in the Portal pane.", "Cloud Shell: the matching az command. What's this? under each one explains it."],
     tick: "Ticks off when every line under Your job is ticked.",
   });
   if (opts.hasQuestions) steps.push({ id: "explain", title: "Explain it", done: opts.questionsDone, say: "One question to lock it in." });
@@ -177,10 +181,10 @@ const PORTAL_PATH: [RegExp, string][] = [
   [/list-effective-nsg/, "Diagnose, then Effective security rules"],
   [/nsg rule/, "tap the subnet or VM with that NSG on the map, then its security rules"],
   [/route-table route/, "tap the subnet with that route table on the map, then its routes"],
+  [/private-dns/, "tap the DNS zone on the map, or use Create"],
   [/vnet peering/, "tap the peering line between the networks on the map"],
   [/vnet (list|show|update|create)/, "tap the virtual network on the map"],
-  [/private-dns/, "tap the DNS zone on the map, or use Create"],
-  [/nic update|nic show/, "tap the VM on the map, then its network interface"],
+  [/nic update|nic show|nic ip-config/, "tap the VM on the map, then its network interface"],
   [/vnet subnet/, "tap the subnet on the map"],
   [/vm run-command/, "tap the VM on the map, then Run command"],
   [/storage account/, "Services, then the storage account"],
@@ -195,8 +199,12 @@ export function hintParts(hint: string): HintParts {
   if (i < 0) return { text: hint, cmd: null, portal: null };
   const rest = hint.slice(i);
   const end = rest.search(/\.\s+[A-Z]|\.$/);
-  const cmd = (end < 0 ? rest : rest.slice(0, end)).trim();
-  const after = end < 0 ? "" : rest.slice(end + 1).trim();
+  // A hint often carries on in prose after the command ("az network vnet list, then ..."). The command stops there.
+  const sentence = (end < 0 ? rest : rest.slice(0, end)).trim();
+  const cut = sentence.search(/,\s|\s+(?:then|with|and|on|for|to)\s+/);
+  const cmd = (cut < 0 ? sentence : sentence.slice(0, cut)).trim();
+  const tail = cut < 0 ? "" : sentence.slice(cut).replace(/^[,\s]+/, "");
+  const after = [tail && tail[0].toUpperCase() + tail.slice(1), end < 0 ? "" : rest.slice(end + 1).trim()].filter(Boolean).join(". ");
   const portal = PORTAL_PATH.find(([re]) => re.test(cmd))?.[1] ?? "find it on the map or in Services";
   const before = hint.slice(0, i).replace(/[:\s]+$/, "");
   return { text: [before, after].filter(Boolean).join(". ").replace(/\.\./g, "."), cmd, portal };

@@ -490,6 +490,7 @@ function actionsFor0(st: State, sel: Selection | null): Action[] {
   if (sel.kind === "vnet" && st.vnets[sel.id]) return vnetActions(st, sel.id);
   if (sel.kind === "peer") return peerActions(st, sel.a, sel.b);
   if (sel.kind === "zone" && st.zones[sel.id]) return zoneActions(st, sel.id);
+  if (sel.kind === "service") return serviceActions(st).filter((a) => a.id.endsWith(`-${sel.id}`) && a.id.startsWith("st-"));
   if (sel.kind === "host" && st.hosts[sel.id]) {
     const h = st.hosts[sel.id];
     const out = subnetActions(st, h.vnet, h.subnet).filter((a) => !a.id.startsWith("sn-"));

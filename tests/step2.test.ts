@@ -4,24 +4,19 @@ import { evalFlow } from "@/content/flows";
 import { mentorSteps, usesMentor } from "@/lib/mentor";
 import { whatsThis } from "@/lib/whatsthis";
 import { hintParts } from "@/lib/mentor";
-import { run } from "@/sim/shell";
-import { newSession } from "@/sim/types";
 
 const mentored = LEVELS.filter(usesMentor);
 
-describe("step 2: Show me how", () => {
+describe("step 2: Find where it stops", () => {
   for (const l of mentored) {
-    it(`${l.id}: offers checks that run`, () => {
+    it(`${l.id}: names tools to check each layer`, () => {
       const st = l.setup();
       const steps = mentorSteps(l, { st, log: [], flows: (l.flows ?? []).map((f) => evalFlow(st, f)), vm: null, goalsDone: false, causeOk: false, hasCause: true, questionsDone: false, hasQuestions: true, explained: false });
       const look = steps.find((s) => s.id === "look")!;
-      // A level whose traffic doesn't start on a VM has nothing to log in to, so the menu can be empty there.
+      // A level whose traffic doesn't start on a VM has nothing to log in to, so the list can be empty there.
       const fromVm = (l.flows ?? []).some((f) => f.want === "open" && st.hosts[f.from]?.kind === "vm");
-      if (fromVm) expect(look.options?.length, l.id).toBeGreaterThan(0);
-      for (const o of look.options ?? []) {
-        const s = newSession();
-        for (const c of o.cmds) expect(run(st, c, s).error, `${l.id}: ${c}`).toBeFalsy();
-      }
+      if (fromVm) expect(look.tools?.length, l.id).toBeGreaterThan(0);
+      expect(look.lookFor, l.id).toBeTruthy();
     });
   }
 });
