@@ -1,16 +1,20 @@
 import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Legal notice", description: "Who runs Learn Cloud Net, trademarks, no affiliation with Microsoft, no warranty, and privacy." };
+export const metadata: Metadata = { title: "Legal notice", description: "Who runs Learn Cloud Net, supporting the project, trademarks, no affiliation with Microsoft, no warranty, and privacy." };
 
 const REPO = "https://github.com/Teddymazrin/learncloudnet";
+const SPONSOR = "https://github.com/sponsors/Teddymazrin";
 
 export default function Legal() {
   return (
     <div className="wrap prose">
       <h1>Legal notice</h1>
-      <p className="muted">Last updated October 31, 2026.</p>
+      <p className="muted">Last updated November 1, 2026.</p>
 
       <h2>Who runs this site</h2>
       <p>Learn Cloud Net (learncloudnet.com) is a free, independent learning project made by Teddy Mazrin. It isn't a company and doesn&apos;t sell anything. For questions or problems, open an issue on <a href={`${REPO}/issues`} target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+
+      <h2>Supporting the project</h2>
+      <p>Learn Cloud Net is free, and every level stays free. If it helps you, you can support it through <a href={SPONSOR} target="_blank" rel="noopener noreferrer">GitHub Sponsors</a>. Support is optional and goes to Teddy Mazrin personally. It isn&apos;t a purchase, doesn&apos;t unlock anything, and isn&apos;t a charitable donation, so it isn&apos;t tax-deductible. Microsoft doesn&apos;t receive or endorse it. GitHub&apos;s own terms and privacy policy apply to payments made there.</p>
 
       <h2>Not affiliated with Microsoft</h2>
       <p>Learn Cloud Net is not affiliated with, sponsored by, endorsed by or connected to Microsoft Corporation in any way. It isn&apos;t an official Microsoft product, training or certification resource, and nothing here is a statement by Microsoft.</p>
