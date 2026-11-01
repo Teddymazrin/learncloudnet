@@ -7,7 +7,8 @@ import type { Direction, Host, HopType, NsgRule, Peering, PublicService, State, 
 export const peeringsOf = (st: State, vnet: string): Peering[] => Object.values(st.peerings).filter((p) => p.vnet === vnet);
 export const findLink = (st: State, from: string, to: string): Peering | null => peeringsOf(st, from).find((p) => p.remote === to) ?? null;
 export function peeringState(st: State, p: Peering): "Initiated" | "Connected" | "Disconnected" {
-  if (!st.vnets[p.remote]) return "Disconnected";
+  // Deleting one link of a Connected peering leaves the other Disconnected, not Initiated.
+  if (!st.vnets[p.remote] || p.disconnected) return "Disconnected";
   return findLink(st, p.remote, p.vnet) ? "Connected" : "Initiated";
 }
 export const connectedPeers = (st: State, vnet: string) => peeringsOf(st, vnet).filter((p) => peeringState(st, p) === "Connected").map((p) => p.remote);

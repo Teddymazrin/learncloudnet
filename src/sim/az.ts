@@ -19,6 +19,8 @@ const E = (msg: string): never => { throw new LabError(msg); };
 const id = (type: string, name: string, parent?: string) =>
   `/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.Network/${parent ? parent + "/" : ""}${type}/${name}`;
 const lastSeg = (v: string) => String(v).split("/").filter(Boolean).pop() ?? "";
+/** `null` or an empty value detaches an associated resource, as in `--route-table null`. */
+const isDetach = (v: string) => v === "" || /^null$/i.test(v);
 const truthy = (v: string) => /^(1|t|true|y|yes)$/i.test(v);
 const isBoolLit = (v: string) => /^(0|1|f|false|n|no|t|true|y|yes)$/i.test(v);
 
@@ -264,7 +266,7 @@ def("vnet subnet update", (st, f) => {
   rgCheck(f);
   const vn = one(f, "vnet-name"), sn = one(f, "name"); const s = getSubnet(st, vn, sn);
   if (!f["address-prefixes"] && !f["network-security-group"] && !f["route-table"] && !f["service-endpoints"] && !f["nat-gateway"] && !f["default-outbound"] && !f["default-outbound-access"]) E("lab: nothing to update. Pass --route-table, --network-security-group, --service-endpoints, --nat-gateway, --default-outbound or --address-prefixes.");
-  if (f["nat-gateway"]) { const n = lastSeg(f["nat-gateway"][0]); if (n === "null") s.natGateway = null; else { if (!st.natGateways?.[n]) E(`lab: NAT gateway '${n}' was not found.`); s.natGateway = n; } }
+  if (f["nat-gateway"]) { const n = lastSeg(f["nat-gateway"][0]); if (isDetach(n)) s.natGateway = null; else { if (!st.natGateways?.[n]) E(`lab: NAT gateway '${n}' was not found.`); s.natGateway = n; } }
   const dob = f["default-outbound"] ?? f["default-outbound-access"];
   if (dob) { if (!isBoolLit(dob[0])) E("lab: --default-outbound takes true or false."); s.defaultOutbound = truthy(dob[0]); }
   if (f["service-endpoints"]) {
@@ -275,8 +277,9 @@ def("vnet subnet update", (st, f) => {
     s.serviceEndpoints = eps;
   }
   if (f["address-prefixes"]) { const c = parseCidrs(f["address-prefixes"], "--address-prefixes"); validateSubnet(st, vn, sn, c); s.prefixes = c.map((x) => x.text); }
-  if (f["network-security-group"]) { const n = lastSeg(f["network-security-group"][0]); getNsg(st, n); s.nsg = n; }
-  if (f["route-table"]) { const n = lastSeg(f["route-table"][0]); getRt(st, n); s.rt = n; }
+  // The az reference: "Use null to detach it." An empty string detaches too.
+  if (f["network-security-group"]) { const n = lastSeg(f["network-security-group"][0]); if (isDetach(n)) s.nsg = null; else { getNsg(st, n); s.nsg = n; } }
+  if (f["route-table"]) { const n = lastSeg(f["route-table"][0]); if (isDetach(n)) s.rt = null; else { getRt(st, n); s.rt = n; } }
   return subnetView(st, vn, sn);
 });
 def("vnet subnet show", (st, f) => { rgCheck(f); const vn = one(f, "vnet-name"), sn = one(f, "name"); getSubnet(st, vn, sn); return subnetView(st, vn, sn); }, true);
@@ -295,16 +298,22 @@ def("nsg show", (st, f) => {
   const nics = Object.values(st.hosts).filter((h) => h.nicNsg === n).map((h) => ({ id: id("networkInterfaces", h.nic) }));
   return { defaultSecurityRules: [...DEFAULT_RULES.Inbound, ...DEFAULT_RULES.Outbound].map((r) => ruleView(r, n)), id: id("networkSecurityGroups", n), name: n, networkInterfaces: nics, resourceGroup: RG, securityRules: g.rules.map((r) => ruleView(r, n)), subnets };
 }, true);
+/** Defaults from the az network nsg rule create reference, for flags the user leaves out. */
+const RULE_DEFAULTS = { direction: "Inbound", access: "Allow", protocol: "*", ports: ["80"] } as const;
 function ruleWrite(create: boolean): Handler {
-  return (st, f) => {
+  return (st, f, notes) => {
     rgCheck(f);
     const nsgName = one(f, "nsg-name"); const nsg = getNsg(st, nsgName);
     const rn = one(f, "name");
     const existing = nsg.rules.find((r) => r.name === rn);
     if (create && existing) E(`lab: rule ${rn} already exists in ${nsgName}. Use az network nsg rule update to change it.`);
     if (!create && !existing) E(`lab: rule ${rn} was not found in ${nsgName}.`);
-    if (create) { need(f, "priority", "--priority 300"); need(f, "direction"); need(f, "access"); need(f, "protocol"); need(f, "destination-port-ranges"); }
-    const r: NsgRule = existing ? JSON.parse(JSON.stringify(existing)) : { name: rn, src: ["*"], dst: ["*"] } as NsgRule;
+    if (create) {
+      need(f, "priority", "--priority 300");
+      const unset = (["direction", "access", "protocol", "destination-port-ranges"] as const).filter((k) => !f[k]?.length);
+      if (unset.length) notes.push(`lab: note: not passed, so az used its defaults: ${unset.map((k) => `--${k} ${k === "destination-port-ranges" ? RULE_DEFAULTS.ports[0] : RULE_DEFAULTS[k]}`).join(", ")}.${unset.includes("destination-port-ranges") ? " Port 80 is easy to miss: pass --destination-port-ranges for the port you mean." : ""}`);
+    }
+    const r: NsgRule = existing ? JSON.parse(JSON.stringify(existing)) : { name: rn, src: ["*"], dst: ["*"], direction: RULE_DEFAULTS.direction, access: RULE_DEFAULTS.access, protocol: RULE_DEFAULTS.protocol, ports: [...RULE_DEFAULTS.ports] } as NsgRule;
     if (f.priority) r.priority = prio(f.priority[0]);
     if (f.direction) r.direction = pick(f.direction[0], DIRS, "direction");
     if (f.access) r.access = pick(f.access[0], ACCESS, "access");
@@ -383,6 +392,8 @@ def("vnet peering create", (st, f, notes) => {
   if (rv === pv) E("lab: a virtual network can't be peered with itself.");
   if (peeringsOf(st, pv).some((p) => p.name === pn)) E(`lab: a peering named ${pn} already exists on ${pv}.`);
   if (findLink(st, pv, rv)) E(`lab: ${pv} already has a peering to ${rv}.`);
+  const stale = findLink(st, rv, pv);
+  if (stale?.disconnected) E(`lab: the peering ${stale.name} on ${rv} is Disconnected. A peering can't be re-created while one side is Disconnected: delete ${stale.name} from ${rv} first, then create both links again.`);
   const ov = st.vnets[pv].prefixes.some((a) => st.vnets[rv].prefixes.some((b) => overlap(mustCidr(a), mustCidr(b))));
   if (ov) E(`Cannot create or update peering because address space of virtual networks overlap.\n(lab: ${pv} ${st.vnets[pv].prefixes.join(", ")} vs ${rv} ${st.vnets[rv].prefixes.join(", ")})`);
   for (const k of PEER_FLAGS) if (f[k] && !isBoolLit(f[k][0])) E(`lab: --${k} takes true or false.`);
@@ -429,7 +440,14 @@ def("vnet peering delete", (st, f) => {
   rgCheck(f);
   const key = `${one(f, "vnet-name")}/${one(f, "name")}`;
   if (!st.peerings[key]) E(`lab: peering ${f.name[0]} was not found on ${f["vnet-name"][0]}.`);
+  const p = st.peerings[key];
+  const back = findLink(st, p.remote, p.vnet);
+  const wasConnected = peeringState(st, p) === "Connected";
   delete st.peerings[key];
+  if (back && wasConnected) {
+    back.disconnected = true;
+    return { mut: true, text: `lab: ${back.name} on ${p.remote} is now Disconnected. To peer again, delete ${back.name} too, then create both links.` };
+  }
   return { mut: true, text: "" };
 });
 def("vnet peering list", (st, f) => {
@@ -470,7 +488,7 @@ def("nic show", (st, f) => {
 def("nic update", (st, f) => {
   rgCheck(f); const h = hostByNic(st, one(f, "name"));
   if (!f["network-security-group"] && !f["ip-forwarding"]) E("lab: nothing to update. Pass --network-security-group or --ip-forwarding.");
-  if (f["network-security-group"]) { const n = lastSeg(f["network-security-group"][0]); getNsg(st, n); h.nicNsg = n; }
+  if (f["network-security-group"]) { const n = lastSeg(f["network-security-group"][0]); if (isDetach(n)) h.nicNsg = null; else { getNsg(st, n); h.nicNsg = n; } }
   if (f["ip-forwarding"]) { const v = f["ip-forwarding"][0] ?? "true"; if (!isBoolLit(v)) E("lab: --ip-forwarding takes true or false."); h.forwarding = truthy(v); }
   return { enableIPForwarding: h.forwarding, name: h.nic, networkSecurityGroup: h.nicNsg ? { id: id("networkSecurityGroups", h.nicNsg) } : null, provisioningState: "Succeeded", resourceGroup: RG };
 });
@@ -906,14 +924,14 @@ def("nsg delete", (st, f) => {
     ...Object.entries(st.vnets).flatMap(([v, vn]) => Object.entries(vn.subnets).filter(([, s]) => s.nsg === n).map(([sn]) => `subnet ${v}/${sn}`)),
     ...Object.values(st.hosts).filter((h) => h.nicNsg === n).map((h) => `network interface ${h.nic}`),
   ];
-  if (users.length) E(`(InUseNetworkSecurityGroupCannotBeDeleted) Network security group ${n} cannot be deleted because it is in use by the following resources: ${users.join(", ")}. In order to delete the Network security group, remove the association with the resource(s).`);
+  if (users.length) E(`(InUseNetworkSecurityGroupCannotBeDeleted) Network security group ${n} cannot be deleted because it is in use by the following resources: ${users.join(", ")}. In order to delete the Network security group, remove the association with the resource(s).\nlab: dissociate it with --network-security-group null, on az network vnet subnet update for a subnet or az network nic update for a NIC.`);
   delete st.nsgs[n];
   return { mut: true, text: "" };
 });
 def("route-table delete", (st, f) => {
   rgCheck(f); const n = one(f, "name"); getRt(st, n);
   const users = Object.entries(st.vnets).flatMap(([v, vn]) => Object.entries(vn.subnets).filter(([, s]) => s.rt === n).map(([sn]) => `${v}/${sn}`));
-  if (users.length) E(`(InUseRouteTableCannotBeDeleted) Route table ${n} is in use by subnet ${users.join(", ")} and cannot be deleted.\nlab: dissociate it first, for example az network vnet subnet update -g ${groupOf(f)} --vnet-name ${users[0].split("/")[0]} --name ${users[0].split("/")[1]} --route-table "".`);
+  if (users.length) E(`(InUseRouteTableCannotBeDeleted) Route table ${n} is in use by subnet ${users.join(", ")} and cannot be deleted.\nlab: dissociate it first, for example az network vnet subnet update -g ${groupOf(f)} --vnet-name ${users[0].split("/")[0]} --name ${users[0].split("/")[1]} --route-table null.`);
   delete st.rts[n];
   return { mut: true, text: "" };
 });

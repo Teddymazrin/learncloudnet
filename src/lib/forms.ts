@@ -53,6 +53,9 @@ const q = (s: string) => (/[\s*]/.test(s) ? `'${s}'` : s);
 const yes = (v: string) => v === "true";
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 const opts = (names: string[]): [string, string][] => names.map((n) => [n, n]);
+/** The Portal's "None" choice, offered when something is associated, dissociates it. */
+const NONE = "__none__";
+const withNone = (names: string[], attached: boolean): [string, string][] => (attached ? [...opts(names), [NONE, "None (dissociate)"]] : opts(names));
 const hosts = (st: State, kinds = ["vm"]) => Object.values(st.hosts).filter((h) => kinds.includes(h.kind));
 const err = (error: string) => ({ error });
 
@@ -217,14 +220,16 @@ function subnetActions(st: State, vn: string, sn: string): Action[] {
   out.push({
     id: `sn-nsg-${vn}-${sn}`, title: `Associate a network security group with ${sn}`, kind: "fix",
     verb: ["az network vnet subnet update"],
-    fields: [{ key: "nsg", label: "Network security group", type: "select", options: opts(nsgs), def: s.nsg ?? nsgs[0], help: nsgs.length ? undefined : "No NSGs exist yet. Create one first from the Create menu." }],
-    build: (v) => (v.nsg ? { cmds: [`az network vnet subnet update ${G} --vnet-name ${vn} --name ${sn} --network-security-group ${v.nsg}`], why: `Every NIC in ${sn} is now filtered by ${v.nsg}. For inbound traffic Azure checks the subnet NSG first, then the NIC's NSG if it has one.` } : err("Create a network security group first.")),
+    fields: [{ key: "nsg", label: "Network security group", type: "select", options: withNone(nsgs, !!s.nsg), def: s.nsg ?? nsgs[0], help: nsgs.length ? undefined : "No NSGs exist yet. Create one first from the Create menu." }],
+    build: (v) => (v.nsg === NONE ? { cmds: [`az network vnet subnet update ${G} --vnet-name ${vn} --name ${sn} --network-security-group null`], why: `Dissociates ${s.nsg} from ${sn}. No subnet NSG filters its NICs now, only a NIC's own NSG if it has one.` }
+      : v.nsg ? { cmds: [`az network vnet subnet update ${G} --vnet-name ${vn} --name ${sn} --network-security-group ${v.nsg}`], why: `Every NIC in ${sn} is now filtered by ${v.nsg}. For inbound traffic Azure checks the subnet NSG first, then the NIC's NSG if it has one.` } : err("Create a network security group first.")),
   });
   out.push({
     id: `sn-rt-${vn}-${sn}`, title: `Associate a route table with ${sn}`, kind: "fix",
     verb: ["az network vnet subnet update"],
-    fields: [{ key: "rt", label: "Route table", type: "select", options: opts(rts), def: s.rt ?? rts[0], help: rts.length ? undefined : "No route tables exist yet. Create one first from the Create menu." }],
-    build: (v) => (v.rt ? { cmds: [`az network vnet subnet update ${G} --vnet-name ${vn} --name ${sn} --route-table ${v.rt}`], why: `Traffic leaving ${sn} now follows the routes in ${v.rt} on top of the system routes.` } : err("Create a route table first.")),
+    fields: [{ key: "rt", label: "Route table", type: "select", options: withNone(rts, !!s.rt), def: s.rt ?? rts[0], help: rts.length ? undefined : "No route tables exist yet. Create one first from the Create menu." }],
+    build: (v) => (v.rt === NONE ? { cmds: [`az network vnet subnet update ${G} --vnet-name ${vn} --name ${sn} --route-table null`], why: `Dissociates ${s.rt} from ${sn}. Its traffic follows the system routes again.` }
+      : v.rt ? { cmds: [`az network vnet subnet update ${G} --vnet-name ${vn} --name ${sn} --route-table ${v.rt}`], why: `Traffic leaving ${sn} now follows the routes in ${v.rt} on top of the system routes.` } : err("Create a route table first.")),
   });
   const nats = Object.keys(st.natGateways ?? {});
   if (nats.length) out.push({
@@ -498,8 +503,8 @@ function actionsFor0(st: State, sel: Selection | null): Action[] {
     if (h.kind === "vm" || h.kind === "dns" || h.kind === "nva") out.unshift({
       id: `nic-nsg-${h.name}`, title: `Associate a network security group with ${h.nic}`, kind: "fix",
     verb: ["az network nic update"],
-      fields: [{ key: "nsg", label: "Network security group", type: "select", options: opts(nsgs), def: h.nicNsg ?? nsgs[0], help: nsgs.length ? undefined : "No NSGs exist yet. Create one first from the Create menu." }],
-      build: (v) => (v.nsg ? { cmds: [`az network nic update ${G} --name ${h.nic} --network-security-group ${v.nsg}`], why: `${v.nsg} now filters ${h.nic} only. Inbound traffic passes the subnet's NSG first, if there is one, then this one. Both must allow it.` } : err("Create a network security group first.")),
+      fields: [{ key: "nsg", label: "Network security group", type: "select", options: withNone(nsgs, !!h.nicNsg), def: h.nicNsg ?? nsgs[0], help: nsgs.length ? undefined : "No NSGs exist yet. Create one first from the Create menu." }],
+      build: (v) => (v.nsg === NONE ? { cmds: [`az network nic update ${G} --name ${h.nic} --network-security-group null`], why: `Dissociates ${h.nicNsg} from ${h.nic}. Only the subnet's NSG, if there is one, filters it now.` } : v.nsg ? { cmds: [`az network nic update ${G} --name ${h.nic} --network-security-group ${v.nsg}`], why: `${v.nsg} now filters ${h.nic} only. Inbound traffic passes the subnet's NSG first, if there is one, then this one. Both must allow it.` } : err("Create a network security group first.")),
     });
     if (h.kind === "fw") out.push(firewallRule(h));
     const lbName = Object.keys(st.lbs ?? {}).find((n) => st.lbs![n].host === h.name);
@@ -700,8 +705,8 @@ function sandboxActions(st: State, sel: Selection | null): Action[] {
   if (sel.kind === "subnet" && st.vnets[sel.vnet]?.subnets[sel.subnet]) {
     const s = st.vnets[sel.vnet].subnets[sel.subnet];
     const out: Action[] = [vmCreate(st, sel.vnet, sel.subnet), del(`del-sn-${sel.vnet}-${sel.subnet}`, `Delete subnet ${sel.subnet}`, `az network vnet subnet delete ${G} --vnet-name ${sel.vnet} --name ${sel.subnet}`, `Deletes ${sel.subnet}. Azure refuses while a VM or other resource is still in it.`)];
-    if (s.nsg) out.push(del(`del-nsg-${s.nsg}`, `Delete network security group ${s.nsg}`, `az network nsg delete ${G} --name ${s.nsg}`, `Deletes ${s.nsg}. Azure refuses while it's still associated with a subnet or a network interface, so dissociate it first.`));
-    if (s.rt) out.push(del(`del-rt-${s.rt}`, `Delete route table ${s.rt}`, `az network route-table delete ${G} --name ${s.rt}`, `Deletes ${s.rt}. Azure refuses while it's still associated with a subnet, so dissociate it first.`));
+    if (s.nsg) out.push(del(`del-nsg-${s.nsg}`, `Delete network security group ${s.nsg}`, `az network nsg delete ${G} --name ${s.nsg}`, `Deletes ${s.nsg}. Azure refuses while it's still associated with a subnet or a network interface, so dissociate it first (choose None in the association form).`));
+    if (s.rt) out.push(del(`del-rt-${s.rt}`, `Delete route table ${s.rt}`, `az network route-table delete ${G} --name ${s.rt}`, `Deletes ${s.rt}. Azure refuses while it's still associated with a subnet, so dissociate it first (choose None in the association form).`));
     return out;
   }
   if (sel.kind === "host" && st.hosts[sel.id]?.kind === "vm") return [del(`del-vm-${sel.id}`, `Delete VM ${sel.id}`, `az vm delete ${G} --name ${sel.id} --yes`, `Deletes ${sel.id} and its network interface. Its subnet can be deleted once nothing else is in it.`)];

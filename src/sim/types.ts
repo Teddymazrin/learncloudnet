@@ -67,6 +67,8 @@ export interface Peering {
   useRemoteGateways?: boolean;
   /** The remote address space this link last synced. Missing means always current. */
   remotePrefixes?: string[];
+  /** The remote side's link was deleted after the peering was Connected. Only deleting this link and re-creating both clears it. */
+  disconnected?: boolean;
 }
 
 export type HostKind = "vm" | "nva" | "pe" | "fw" | "dns" | "dnsin" | "gw" | "bastion" | "lb";

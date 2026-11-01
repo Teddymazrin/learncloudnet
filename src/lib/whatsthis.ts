@@ -13,7 +13,7 @@ const AZ: [RegExp, string][] = [
   [/show-effective-route-table/, ACTIONS_ABOUT.routes],
   [/list-effective-nsg/, ACTIONS_ABOUT.nsg],
   [/vnet peering sync/, "Updates a peering with the latest address space of the network on the other side. Run it after every change to a peered network's address ranges."],
-  [/vnet peering delete/, "Removes one side of a peering. A peering needs a link from each side, so the other side shows Disconnected until both are re-created."],
+  [/vnet peering delete/, "Removes one side of a peering. A peering needs a link from each side, so the other side shows Disconnected. To peer again, delete that side too, then re-create both."],
   [/vnet subnet create/, "Adds a subnet: a range carved out of the virtual network's address space."],
   [/vnet create/, "Creates a virtual network with its address space."],
   [/vnet update/, "Changes a virtual network, such as its address space or the DNS servers its VMs use."],
