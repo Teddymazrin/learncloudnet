@@ -21,7 +21,7 @@ export const beginnerMore: Level[] = [
       facts: ["--address-prefixes replaces the list, so include the existing ranges.", "A range in use by a subnet can't be removed.", "If the VNet is peered (joined to another VNet, a later level), the peering has to be synced after the change."],
     },
     steps: [
-      { say: "Look at the address space and the subnets that fill it.", cmd: `az network vnet show ${G} --name vnet-app --query addressSpace.addressPrefixes` },
+      { say: "Look at vnet-app's current address space.", cmd: `az network vnet show ${G} --name vnet-app --query addressSpace.addressPrefixes` },
       { say: "Give the VNet both ranges: the one it has, and the new one.", cmd: `az network vnet update ${G} --name vnet-app --address-prefixes 10.1.0.0/24 10.1.1.0/24`, flags: [["--address-prefixes", "the full list of ranges, existing and new, separated by spaces"]] },
       { say: "Create subnet-data in the new range.", cmd: `az network vnet subnet create ${G} --vnet-name vnet-app --name subnet-data --address-prefixes 10.1.1.0/24` },
       { say: "Answer the question below: does --address-prefixes add to the list or replace it?", cmd: "answer 1 replaces" },
@@ -96,11 +96,11 @@ export const beginnerMore: Level[] = [
   {
     forms: { fix: "free", diagnose: true, only: ["rule-add-"] },
     id: "outbound-rules", tier: "beginner", stage: "Security", title: "Block outbound SSH with an NSG rule",
-    story: "Security wants vm-web (in subnet-web) stopped from opening SSH sessions (port 22) to anything in subnet-db (10.1.3.0/24). The app on vm-web still needs SQL on vm-db (10.1.3.4) at port 1433. nsg-web is already on subnet-web, with no rules yet. Add an outbound rule to it, then log in to vm-web and test both ports.",
+    story: "Security wants vm-web (in subnet-web) stopped from opening SSH sessions (port 22) to anything in subnet-db (10.1.3.0/24). The app on vm-web still needs SQL on vm-db (10.1.3.4) at port 1433. nsg-web is already on subnet-web, with no custom rules yet. Add an outbound rule to it, then log in to vm-web and test both ports.",
     concept: {
       heading: "Outbound rules",
       paragraphs: [
-        "NSG rules have a direction. Outbound rules filter traffic leaving the NIC or subnet they're attached to.",
+        "NSG rules have a direction. Outbound rules filter traffic leaving the NIC or subnet the NSG is attached to.",
         "Every NSG starts with three outbound defaults: AllowVnetOutBound (65000), AllowInternetOutBound (65001) and DenyAllOutBound (65500). Your rules run before them.",
         "For outbound traffic Azure checks the NIC's NSG first, then the subnet's NSG. If the first one denies, the second never sees the packet.",
       ],
@@ -202,7 +202,7 @@ export const beginnerMore: Level[] = [
       { say: "Create the route table.", cmd: `az network route-table create ${G} --name rt-web` },
       { say: "Add a route that drops traffic to subnet-old.", cmd: `az network route-table route create ${G} --route-table-name rt-web --name drop-old --address-prefix 10.1.9.0/24 --next-hop-type None`, flags: [["--address-prefix 10.1.9.0/24", "the destination this route covers"], ["--next-hop-type None", "drop the traffic"]] },
       { say: "Associate the route table with subnet-web.", cmd: `az network vnet subnet update ${G} --vnet-name vnet-app --name subnet-web --route-table rt-web` },
-      { say: "Look at vm-web's effective routes. Find both routes that contain 10.1.9.4.", cmd: `az network nic show-effective-route-table ${G} --name vm-web-nic -o table` },
+      { say: "Look at vm-web's effective routes. Find the two routes the question compares: the system 10.1.0.0/16 and your 10.1.9.0/24. Both contain 10.1.9.4.", cmd: `az network nic show-effective-route-table ${G} --name vm-web-nic -o table` },
       { say: "Answer the question below.", cmd: "answer 1 10.1.9.0/24" },
     ],
     setup: () => {
@@ -231,11 +231,11 @@ export const beginnerMore: Level[] = [
   {
     forms: { fix: "free", diagnose: false, only: ["create-zone", "zone-"] },
     id: "private-dns", tier: "beginner", stage: "Name resolution", title: "Create a private DNS zone",
-    story: "The app on vm-app connects to its database, vm-db, by its IP 10.1.3.4, and that IP is about to change. Give vm-db a name instead. DNS is what turns a name into an IP. Create the private DNS zone lab.internal, add a record db pointing at 10.1.3.4, so db.lab.internal means vm-db, link the zone to vnet-app, and check the name from vm-app.",
+    story: "The app on vm-app connects to its database, vm-db, by its IP 10.1.3.4, and that IP is about to change. Give vm-db a name instead, so the next change is one DNS record, not every app's config. DNS is what turns a name into an IP. Create the private DNS zone lab.internal, add a record db pointing at 10.1.3.4, so db.lab.internal means vm-db, link the zone to vnet-app, and check the name from vm-app.",
     concept: {
       heading: "Private DNS zones",
       paragraphs: [
-        "A private DNS zone holds records that only virtual networks linked to it can resolve. Resolution works only from linked virtual networks.",
+        "A private DNS zone holds records that only virtual networks linked to it can resolve. Its records aren't resolvable from the internet.",
         "An A record maps a name to an IPv4 address. az network private-dns record-set a add-record adds one, and creates the record set if it doesn't exist yet.",
         "A link can also turn on auto-registration, which creates a record for each VM in the linked VNet. A VNet can have only one zone with auto-registration, so a link that's just for resolving names leaves it off.",
       ],
@@ -265,9 +265,9 @@ export const beginnerMore: Level[] = [
     lesson: "A private DNS zone answers only for the virtual networks linked to it. Create the zone, add the record, link the VNet, and names replace hard-coded IPs.",
     why: "The db record in lab.internal answers 10.1.3.4, and link-app makes vnet-app one of the networks that can see the zone. So when vm-app asks for db.lab.internal, it gets vm-db's IP and reaches it on 1433.",
     learn: [
-      L("What is a private Azure DNS zone?", "https://learn.microsoft.com/azure/dns/private-dns-privatednszone"),
+      L("Azure Private DNS zone overview", "https://learn.microsoft.com/azure/dns/private-dns-privatednszone"),
       L("az network private-dns record-set a add-record", "https://learn.microsoft.com/cli/azure/network/private-dns/record-set/a#az-network-private-dns-record-set-a-add-record"),
-      L("Private DNS zone virtual network links", "https://learn.microsoft.com/azure/dns/private-dns-virtual-network-links"),
+      L("What is a virtual network link?", "https://learn.microsoft.com/azure/dns/private-dns-virtual-network-links"),
     ],
     flows: [{ from: "vm-app", dns: "db.lab.internal", expect: "vm-db", port: 1433, want: "open" }],
     solution: [`az network private-dns zone create ${G} --name lab.internal`, `az network private-dns record-set a add-record ${G} --zone-name lab.internal --record-set-name db --ipv4-address 10.1.3.4`, `az network private-dns link vnet create ${G} --zone-name lab.internal --name link-app --virtual-network vnet-app --registration-enabled false`, "ssh vm-app", "nslookup db.lab.internal", "exit"],

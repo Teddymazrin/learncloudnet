@@ -20,10 +20,10 @@ const LEARN = {
   stFw: L("Azure Storage firewall: virtual network rules", "https://learn.microsoft.com/azure/storage/common/storage-network-security-virtual-networks#create-a-virtual-network-rule"),
   compare: L("Compare private endpoints and service endpoints", "https://learn.microsoft.com/azure/virtual-network/vnet-integration-for-azure-services#compare-private-endpoints-and-service-endpoints"),
   peDns: L("Troubleshoot private endpoint DNS resolution", "https://learn.microsoft.com/troubleshoot/azure/private-link/troubleshoot-private-endpoint-dns-resolution"),
-  dnsIntegration: L("Private endpoint DNS integration: on-premises workloads", "https://learn.microsoft.com/azure/private-link/private-endpoint-dns-integration"),
+  dnsIntegration: L("Private endpoint DNS integration: on-premises workloads", "https://learn.microsoft.com/azure/private-link/private-endpoint-dns-integration#azure-private-resolver-for-on-premises-workloads"),
   ownDns: L("Name resolution that uses your own DNS server", "https://learn.microsoft.com/azure/virtual-network/virtual-networks-name-resolution-for-vms-and-role-instances#name-resolution-that-uses-your-own-dns-server"),
   resolver: L("Azure DNS Private Resolver endpoints and rulesets", "https://learn.microsoft.com/azure/dns/private-resolver-endpoints-rulesets"),
-  resolverOverview: L("What is Azure DNS Private Resolver? How queries are processed", "https://learn.microsoft.com/azure/dns/dns-private-resolver-overview"),
+  resolverOverview: L("What is Azure DNS Private Resolver? How queries are processed", "https://learn.microsoft.com/azure/dns/dns-private-resolver-overview#how-azure-dns-private-resolver-works"),
   outbound: L("Default outbound access in Azure", "https://learn.microsoft.com/azure/virtual-network/ip-services/default-outbound-access"),
   nat: L("What is Azure NAT Gateway?", "https://learn.microsoft.com/azure/nat-gateway/nat-overview#azure-nat-gateway-basics"),
   natQs: L("Quickstart: Create a NAT gateway with the Azure CLI", "https://learn.microsoft.com/azure/nat-gateway/quickstart-create-nat-gateway#create-the-nat-gateway"),
@@ -250,7 +250,7 @@ export const advancedIntros: Level[] = [
     concept: {
       heading: "Outbound access and NAT gateway",
       paragraphs: [
-        "A VM with no explicit outbound method used to get default outbound access: an IP Microsoft owns and can change. For API versions after March 31, 2026, subnets in new virtual networks are private by default and don't get it.",
+        "A VM with no explicit outbound method gets default outbound access: an IP Microsoft owns and can change. For API versions released after March 31, 2026, subnets in new virtual networks are private by default and don't get it.",
         "A VM in a private subnet needs an explicit method to reach the internet. Learn lists a NAT gateway on the subnet (recommended for most scenarios), a Standard load balancer with outbound rules, a Standard public IP on the NIC, or a firewall or appliance reached through a user-defined route.",
         "A Standard NAT gateway uses Standard public IPs (the StandardV2 SKU needs StandardV2 public IPs). VMs in its subnets reach the internet with the NAT gateway's public IP. A user-defined route to a virtual appliance or gateway takes precedence over the NAT gateway.",
       ],
@@ -306,7 +306,7 @@ export const advancedIntros: Level[] = [
       ask(1, "Which IP address do the health probes come from?", ["168.63.129.16"]),
     ],
     par: 1,
-    hints: ["Deny-All-Inbound at 4000 runs before AllowAzureLoadBalancerInBound at 65001.", "Allow the AzureLoadBalancer tag on 443, below 4000.", "Run step 5, then answer 1 168.63.129.16."],
+    hints: ["Deny-All-Inbound at 4000 runs before AllowAzureLoadBalancerInBound at 65001.", "Allow the AzureLoadBalancer tag on 443 with a priority number lower than 4000.", "Run step 5, then answer 1 168.63.129.16."],
     lesson: "When every backend is down at once, look at the probe before the app. A broad deny in the backends' NSG catches the probe from 168.63.129.16, so allow the AzureLoadBalancer tag above it.",
     why: "Allow-LB-Probe at priority 300 lets the AzureLoadBalancer tag (168.63.129.16) in on 443 before Deny-All-Inbound at 4000 catches it. The probe passes, lb-app marks vm-web1 and vm-web2 healthy, and sends client traffic to them again.",
     learn: [LEARN.probe, LEARN.probeTs],
@@ -337,7 +337,7 @@ export const advancedIntros: Level[] = [
     objectives: [
       { text: "Get vm-spoke1 reaching vm-spoke2 on 443 through azfw-hub", test: ({ st }) => through(st, "vm-spoke1", "10.2.1.4", 443, "azfw-hub") },
       { text: "Keep SSH between the spokes blocked", test: ({ st }) => !can(st, "vm-spoke1", "10.2.1.4", 22) },
-      ask(1, "Two collections both match: a Deny at priority 200 and an Allow at 300. Which wins?", ["deny", "the deny", "deny at 200"]),
+      ask(1, "Two network rule collections both match: a Deny at priority 200 and an Allow at 300. Which wins?", ["deny", "the deny", "deny at 200"]),
     ],
     par: 1,
     hints: ["One rule in a new collection.", "Source 10.1.0.0/16, destination 10.2.0.0/16, port 443, TCP.", "Run step 2, then answer 1 deny."],
@@ -406,7 +406,7 @@ export const advancedMore: Level[] = [
       ask(1, "When a user-defined route and a route from the gateway have the same prefix, which one wins?", ["user-defined route", "udr", "user defined route", "the udr", "user-defined"]),
     ],
     par: 3,
-    hints: ["Compare the peerings of the two spokes: az network vnet peering list -g rg-lab --vnet-name vnet-hub -o table", "Whatever spoke1's peering has that spoke2's lacks is one gap. The old template may also have left something in rt-spoke2.", "Compare spoke2's peering settings and effective routes with spoke1's. The working spoke is your reference."],
+    hints: ["Compare the peerings of the two spokes: az network vnet peering list -g rg-lab --vnet-name vnet-hub -o table", "Whatever spoke1's peering has that spoke2's lacks is one gap. The old template may also have left something in rt-spoke2.", "Run az network vnet peering show on hub-to-spoke2 and spoke2-to-hub, and compare allowGatewayTransit and useRemoteGateways with spoke1's peerings. Then list rt-spoke2's routes for one whose next hop is None."],
     lesson: "Every new spoke needs gateway transit on both sides of its peering, and its route table can still override the gateway's routes. Compare a new spoke with one that works.",
     why: "Gateway transit on both sides of the spoke2 peering brings vgw-hub's on-premises routes into vnet-spoke2. Removing block-onprem matters too: a user-defined route with the same prefix beats the gateway's route, and its next hop None dropped the traffic.",
     learn: [LEARN.transit, L("How Azure selects a route", "https://learn.microsoft.com/azure/virtual-network/virtual-networks-udr-overview#how-azure-selects-routes-for-traffic-routing")],
@@ -466,7 +466,7 @@ export const advancedMore: Level[] = [
   },
   {
     id: "probed-down", tier: "advanced", stage: "Load balancing", title: "Load balancer down after a port change",
-    story: "The web app on vm-web1 and vm-web2 moved to port 443. Since then every request from vm-client to lb-app at 10.1.1.10 times out. Both web servers are running and serving HTTPS locally. nsg-web filters the web subnet, and SSH from the client subnet must stay blocked.",
+    story: "The web app on vm-web1 and vm-web2 moved to port 443, and nsg-web was reworked in the same change window. Since then every request from vm-client to lb-app at 10.1.1.10 times out. Both web servers are running and serving HTTPS locally. nsg-web filters the web subnet, and SSH from the client subnet must stay blocked.",
     fix: "Every request to lb-app at 10.1.1.10 times out since the port change.",
     setup: () => lbLab(8080),
     objectives: [

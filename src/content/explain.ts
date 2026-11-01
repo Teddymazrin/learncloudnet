@@ -36,7 +36,7 @@ export const EXPLAIN: Record<ExplainKind, Explainer> = {
     name: "Azure Firewall",
     what: "A managed, stateful firewall that sits in its own subnet named AzureFirewallSubnet (at least /26). It denies all traffic until a rule allows it. Rule collections run by priority, 100 first and 65000 last, and the first matching rule wins. Network rules are checked before application rules.",
     why: "Spoke subnets send traffic to it with a user-defined route whose next hop is the firewall's private IP. Both spokes need that route, or the reply skips the firewall and the session breaks.",
-    learn: [L("Azure Firewall rule processing logic", "https://learn.microsoft.com/azure/firewall/rule-processing"), L("Azure Firewall FAQ: spoke-to-spoke filtering", "https://learn.microsoft.com/azure/firewall/firewall-faq#can-azure-firewall-in-a-hub-virtual-network-forward-and-filter-network-traffic-between-multiple-spoke-virtual-network")],
+    learn: [L("Azure Firewall rule processing logic", "https://learn.microsoft.com/azure/firewall/rule-processing"), L("Azure Firewall FAQ: spoke-to-spoke filtering", "https://learn.microsoft.com/azure/firewall/firewall-faq#can-azure-firewall-in-a-hub-virtual-network-forward-and-filter-network-traffic-between-multiple-spoke-virtual-networks")],
   },
   dns: {
     name: "DNS server VM",
@@ -54,7 +54,7 @@ export const EXPLAIN: Record<ExplainKind, Explainer> = {
     name: "VPN gateway",
     what: "A virtual network gateway in a subnet named GatewaySubnet (/27 or larger for most SKUs). It connects the virtual network to on-premises networks, and routes to them appear with next hop Virtual network gateway.",
     why: "Peered spokes can use the hub's gateway: the hub's peering allows gateway transit and the spoke's peering uses remote gateways. Then on-premises routes reach the spoke too.",
-    learn: [L("Configure VPN gateway transit for virtual network peering", "https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-peering-gateway-transit"), L("VPN Gateway settings: gateway subnet", "https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings#gateway-subnet")],
+    learn: [L("Configure VPN gateway transit for virtual network peering", "https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-peering-gateway-transit"), L("VPN Gateway settings: gateway subnet", "https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings#gwsub")],
   },
   bastion: {
     name: "Azure Bastion",

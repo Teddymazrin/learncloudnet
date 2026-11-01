@@ -59,7 +59,7 @@ export const expert: Level[] = [
     id: "spoke-silence", tier: "expert", stage: "Incident", title: "Spoke 2 can't reach Spoke 1",
     story: "\"Since the weekend maintenance, nothing in Spoke 2 can reach the app in Spoke 1.\" The app runs on vm-spoke1 (10.1.1.4) on 443, and vm-spoke2 calls it. By design, traffic between spokes goes through fw-hub, the hub's network appliance at 10.0.2.4, and the spokes are never peered to each other.",
     fix: "Nothing in Spoke 2 can reach the app in Spoke 1.",
-    clock: 15,
+    clock: 20,
     setup: () => {
       const st = nvaHub({ forwarding: false, fwd1: false, rt2: { prefix: "10.1.0.0/16", nhIp: "10.0.2.40" } });
       st.hosts["vm-spoke1"].ports = [22, 443];
@@ -130,9 +130,9 @@ export const expert: Level[] = [
     ],
     par: 2,
     hints: [],
-    lesson: "A rebuilt spoke loses settings that lived on its side: use remote gateways on its peering, and whatever its NSG used to allow. The gateway can be perfectly healthy while the spoke stays invisible to on-premises.",
+    lesson: "A rebuilt spoke loses settings that lived on its side: use remote gateways on its peering, and the NSG rules it used to have. Here a new deny covered all office traffic. The gateway can be perfectly healthy while the spoke stays invisible to on-premises.",
     why: "The office only learns Spoke 1's range when the spoke's peering uses the hub's VPN gateway, so that gave traffic a path both ways. Then the NSG had to stop denying all office traffic. Once the deny no longer covers 443, the app opens while SSH stays blocked.",
-    learn: [LEARN.transit, LEARN.nsg, L("Troubleshoot hub-spoke connectivity to on-premises", "https://learn.microsoft.com/troubleshoot/azure/virtual-network/virtual-network-troubleshoot-peering-issues#troubleshoot-a-connectivity-issue-between-a-hub-spoke-virtual-network-and-an-on-premises-resource")],
+    learn: [LEARN.transit, LEARN.nsg, L("Troubleshoot hub-spoke connectivity to on-premises", "https://learn.microsoft.com/troubleshoot/azure/virtual-network/virtual-network-troubleshoot-peering-issues#troubleshoot-a-connectivity-problem-between-a-hub-spoke-virtual-network-and-an-on-premises-resource")],
     flows: [{ from: "srv-onprem", to: "vm-spoke1", port: 443, want: "open" }, { from: "srv-onprem", to: "vm-spoke1", port: 22, want: "closed" }],
     solution: [
       `az network vnet peering update ${G} --vnet-name vnet-spoke1 --name spoke1-to-hub --use-remote-gateways true`,
@@ -166,8 +166,8 @@ export const expert: Level[] = [
     par: 3,
     hints: [],
     lesson: "A firewall cutover needs three things: an allow rule, because Azure Firewall denies by default; a route back through the firewall from the other spoke; and peerings that accept forwarded traffic. Miss one and the whole path stays dark.",
-    why: "Azure Firewall drops anything no rule allows, so 443 from Spoke 1 to Spoke 2 needed a rule. The reply has to come back through the firewall too, which takes a route in Spoke 2 and a peering that accepts traffic the hub forwards. SSH matches no allow rule, so the firewall still drops it.",
-    learn: [LEARN.fw, L("Azure Firewall FAQ: filtering between spokes", "https://learn.microsoft.com/azure/firewall/firewall-faq#can-azure-firewall-in-a-hub-virtual-network-forward-and-filter-network-traffic-between-multiple-spoke-virtual-network"), LEARN.peering],
+    why: "Azure Firewall drops anything no rule allows, so 443 from Spoke 1 to Spoke 2 needed a rule. Spoke 2's peering had to accept traffic the hub forwards, or the request never arrived, and the reply needed a route in Spoke 2 to come back through the firewall. SSH matches no allow rule, so the firewall still drops it.",
+    learn: [LEARN.fw, L("Azure Firewall FAQ: filtering between spokes", "https://learn.microsoft.com/azure/firewall/firewall-faq#can-azure-firewall-in-a-hub-virtual-network-forward-and-filter-network-traffic-between-multiple-spoke-virtual-networks"), LEARN.peering],
     flows: [{ from: "vm-spoke1", to: "vm-api", port: 443, want: "open" }, { from: "vm-spoke1", to: "vm-api", port: 22, want: "closed" }],
     solution: [
       `az network firewall network-rule create ${G} --firewall-name azfw-hub --collection-name Allow-Spoke1-API --name https --priority 200 --action Allow --protocols TCP --source-addresses 10.1.0.0/16 --destination-addresses 10.2.0.0/16 --destination-ports 443`,
@@ -244,7 +244,7 @@ export const expert: Level[] = [
     learn: [L("What is Azure DNS Private Resolver? How queries are processed", "https://learn.microsoft.com/azure/dns/dns-private-resolver-overview"), LEARN.resolver, L("Change DNS servers of a virtual network", "https://learn.microsoft.com/azure/virtual-network/manage-virtual-network#change-dns-servers-of-a-virtual-network-using-the-azure-cli"), L("Troubleshoot private endpoint DNS resolution: custom DNS", "https://learn.microsoft.com/troubleshoot/azure/private-link/troubleshoot-private-endpoint-dns-resolution#step-5")],
     flows: [{ from: "vm-spoke2", dns: "app.corp.contoso.com", expect: "srv-app", port: 443, want: "open" }],
     solution: [
-      `az network vnet update ${G} --name vnet-spoke2 --dns-servers 168.63.129.16`,
+      `az network vnet update ${G} --name vnet-spoke2 --dns-servers ""`,
       `az dns-resolver vnet-link create ${G} --ruleset-name rs-onprem --name link-spoke2 --id /subscriptions/x/resourceGroups/rg-lab/providers/Microsoft.Network/virtualNetworks/vnet-spoke2`,
     ],
   },
@@ -274,7 +274,7 @@ export const expert: Level[] = [
     par: 4,
     hints: [],
     lesson: "Moving a workload carries over its own restrictions and leaves behind what its old network gave it for free. Here: gateway transit for the new spoke, a private DNS link, and an outbound rule on the VM's own NIC. Separate the problems by destination and take them one at a time.",
-    why: "Each destination failed for its own reason. Gateway transit, set on both sides of the peering, gave the spoke a route to on-premises. The zone link made the storage name resolve to its private endpoint. An outbound allow for 1433 let database traffic past the NIC's deny-all, which still blocks every other port.",
+    why: "Each destination failed for its own reason. Gateway transit, set on both sides of the peering, gave the spoke a route to on-premises. The zone link made the storage name resolve to its private endpoint. An outbound allow for 1433 let database traffic past the NIC's deny-all, which still blocks every port no rule allows.",
     learn: [LEARN.transit, LEARN.peDns, L("How network security groups filter network traffic: outbound", "https://learn.microsoft.com/azure/virtual-network/network-security-group-how-it-works#outbound-traffic")],
     flows: [{ from: "vm-orders", to: "srv-db", port: 1433, want: "open" }, { from: "vm-orders", dns: "stlogs01.blob.core.windows.net", expect: "pe-stlogs01", port: 443, want: "open" }],
     solution: [

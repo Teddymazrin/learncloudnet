@@ -307,7 +307,7 @@ function vnetActions(st: State, vn: string): Action[] {
       { key: "ips", label: "IP address", type: "text", def: (v.dnsServers ?? []).filter((x) => x !== "168.63.129.16").join(" "), placeholder: "10.0.4.4", show: (x) => x.mode === "custom" },
     ],
     build: (x) => {
-      if (x.mode !== "custom") return { cmds: [`az network vnet update ${G} --name ${vn} --dns-servers 168.63.129.16`], why: `${vn} uses Azure-provided DNS again. 168.63.129.16 is equivalent to the default, so linked private zones and forwarding ruleset links apply.` };
+      if (x.mode !== "custom") return { cmds: [`az network vnet update ${G} --name ${vn} --dns-servers ""`], why: `${vn} uses Azure-provided DNS again: an empty list means the default, 168.63.129.16, so linked private zones and forwarding ruleset links apply.` };
       const ips = list(x.ips ?? "");
       return ips.length ? { cmds: [`az network vnet update ${G} --name ${vn} --dns-servers ${ips.join(" ")}`], why: `VMs in ${vn} send DNS to ${ips.join(", ")} instead of Azure DNS. That server decides how names resolve.` } : err("Enter at least one DNS server IP.");
     },

@@ -119,7 +119,7 @@ export const beginner: Level[] = [
     ],
     par: 1,
     hints: ["Run cidr 10.1.3.0/26 to see the subnet's size and range.", "A /26 is 64 addresses. Azure keeps five: .0 to .3 and the last one.", "answer 1 59, answer 2 10.1.3.4"],
-    lesson: "Every subnet loses five addresses to Azure. Size subnets for the hosts you need plus those five, and remember the first address you can hand out is always .4 of the subnet.",
+    lesson: "Every subnet loses five addresses to Azure. Size subnets for the hosts you need plus those five, and remember the first address you can hand out is always the subnet's network address plus 4.",
     why: "subnet-api fits inside vnet-app's 10.1.0.0/16 and doesn't overlap subnet-web, so Azure accepted it. Its 64 addresses minus the five Azure keeps (10.1.3.0 to 10.1.3.3 and 10.1.3.63) leave 59 for VMs, starting at 10.1.3.4.",
     learn: [
       L("Private IP addresses: reserved addresses", "https://learn.microsoft.com/azure/virtual-network/ip-services/private-ip-addresses"),
@@ -159,7 +159,7 @@ export const beginner: Level[] = [
       ask(2, "Which subnet is vm-web2 in?", ["subnet-web"]),
     ],
     par: 0,
-    hints: ["Look at the NIC, vm-web2-nic, with the ip-config list command in step 1.", "The table has a private IP column and a subnet column. Those are your two answers.", "answer 1 10.1.1.5, answer 2 subnet-web"],
+    hints: ["Look at the NIC, vm-web2-nic, with the ip-config list command in step 1.", "The table's PrivateIPAddress column is the first answer and its Subnet column the second. (A real Azure CLI table leaves the subnet out; there you'd read it from az network nic show.)", "answer 1 10.1.1.5, answer 2 subnet-web"],
     lesson: "When you're asked for a VM's IP, look at its NIC. The NIC's IP configuration tells you the private IP and the subnet, and that subnet decides which security rules and routes apply. You'll meet both soon.",
     why: "vm-web2-nic's IP configuration holds the address 10.1.1.5, handed out from subnet-web's range 10.1.1.0/24. The VM itself has no IP of its own, so the NIC is always where you look.",
     learn: [
@@ -180,7 +180,7 @@ export const beginner: Level[] = [
         "Each rule has a priority between 100 and 4096. Azure processes rules lowest number first and stops at the first match.",
         "Every NSG starts with default rules you can't delete. Inbound: AllowVnetInBound (65000), AllowAzureLoadBalancerInBound (65001), DenyAllInBound (65500). Outbound: AllowVnetOutBound (65000), AllowInternetOutBound (65001), DenyAllOutBound (65500). Your custom rules always run before them.",
       ],
-      facts: ["Custom priority range: 100 to 4096.", "Lowest number wins, first match stops.", "Defaults allow traffic within the VNet and deny everything else inbound."],
+      facts: ["Custom priority range: 100 to 4096.", "Lowest number wins, first match stops.", "Inbound defaults allow traffic from the VNet and Azure Load Balancer, and deny the rest."],
     },
     steps: [
       { say: "Create the NSG.", cmd: `az network nsg create ${G} --name nsg-web` },
@@ -228,7 +228,7 @@ export const beginner: Level[] = [
     },
     steps: [
       { say: "Show the effective routes for vm-web's NIC.", cmd: `az network nic show-effective-route-table ${G} --name vm-web-nic -o table` },
-      { say: "Answer all three questions with the next hop type exactly as the table shows it.", cmd: "answer 1 Internet" },
+      { say: "Answer all three questions with the next hop type from the table. The Portal calls the VNet's own hop Virtual network; the real CLI prints VnetLocal. Either is accepted.", cmd: "answer 1 Internet" },
     ],
     setup: () => {
       const st = base();
@@ -291,7 +291,7 @@ export const beginner: Level[] = [
     lesson: "IP flow verify turns 'is the NSG blocking it?' into a one-command answer that names the rule. Fix by adding the narrowest allow you need at a lower priority number.",
     why: "Allow-HTTPS-Client has priority 300, so nsg-web checks it before Deny-Vnet-Inbound at 4000. It matches only TCP 443 from 10.1.2.0/24, so HTTPS from vm-client stops at the allow while SSH still falls through to the deny.",
     learn: [
-      L("What is Azure Network Watcher? IP flow verify", "https://learn.microsoft.com/azure/network-watcher/network-watcher-overview"),
+      L("IP flow verify overview", "https://learn.microsoft.com/azure/network-watcher/ip-flow-verify-overview"),
       L("az network watcher test-ip-flow", "https://learn.microsoft.com/cli/azure/network/watcher?view=azure-cli-latest"),
       L("Troubleshoot NSG misconfigurations blocking traffic", "https://learn.microsoft.com/troubleshoot/azure/virtual-network/virtual-network-troubleshoot-nsg-blocking-traffic"),
     ],
@@ -316,7 +316,7 @@ export const beginner: Level[] = [
       { say: "Create the link from vnet-a to vnet-b.", cmd: `az network vnet peering create ${G} --name a-to-b --vnet-name vnet-a --remote-vnet vnet-b --allow-vnet-access`, flags: [["--vnet-name vnet-a", "the local side of this link"], ["--remote-vnet vnet-b", "the other VNet, by name or resource ID"], ["--allow-vnet-access", "let traffic flow through this link"]] },
       { say: "Check the state from vnet-a. It should say Initiated.", cmd: `az network vnet peering list ${G} --vnet-name vnet-a -o table` },
       { say: "Create the reverse link.", cmd: `az network vnet peering create ${G} --name b-to-a --vnet-name vnet-b --remote-vnet vnet-a --allow-vnet-access` },
-      { say: "Check the state again. Both links should now say Connected.", cmd: `az network vnet peering list ${G} --vnet-name vnet-a -o table` },
+      { say: "Check the state again. a-to-b should now say Connected, and so does b-to-a on vnet-b.", cmd: `az network vnet peering list ${G} --vnet-name vnet-a -o table` },
       { say: "Connect to vm-a so the next command runs from there.", cmd: "ssh vm-a" },
       { say: "From vm-a, test vm-b's port 443. Then type exit.", cmd: "nc -zv 10.20.1.4 443" },
     ],
@@ -340,7 +340,7 @@ export const beginner: Level[] = [
     learn: [
       L("Azure virtual network peering", "https://learn.microsoft.com/azure/virtual-network/virtual-network-peering-overview"),
       L("Create, change, or delete a virtual network peering", "https://learn.microsoft.com/azure/virtual-network/virtual-network-manage-peering"),
-      L("Tutorial: Connect virtual networks with peering (CLI)", "https://learn.microsoft.com/azure/virtual-network/tutorial-connect-virtual-networks"),
+      L("Tutorial: Connect virtual networks with virtual network peering (see the CLI tab)", "https://learn.microsoft.com/azure/virtual-network/tutorial-connect-virtual-networks"),
     ],
     flows: [{ from: "vm-a", to: "vm-b", port: 443, want: "open" }],
     solution: [`az network vnet peering create ${G} --name a-to-b --vnet-name vnet-a --remote-vnet vnet-b --allow-vnet-access`, `az network vnet peering create ${G} --name b-to-a --vnet-name vnet-b --remote-vnet vnet-a --allow-vnet-access`, "ssh vm-a", "nc -zv 10.20.1.4 443"],
@@ -350,6 +350,7 @@ export const beginner: Level[] = [
     forms: { fix: "free", diagnose: true },
     id: "review-beginner", tier: "beginner", stage: "Review", title: "Review: peer two VNets and add an NSG",
     story: "A new team built vnet-shop (10.30.0.0/16) and vnet-pay (10.40.0.0/16). vm-shop needs the API on vm-pay (10.40.1.4) at port 443, and security wants an NSG named nsg-api on vm-pay's subnet, subnet-api, before anything goes live. Someone started the peering from vnet-shop and stopped there. No steps this time, just what you've learned.",
+    fix: "vm-shop can't reach the API on vm-pay at 443.",
     setup: () => {
       const st = base();
       vnet(st, "vnet-shop", ["10.30.0.0/16"], { "subnet-web": { p: "10.30.1.0/24" } });

@@ -145,3 +145,11 @@ describe("sweep: map lines and the map key", () => {
     expect(problems).toEqual([]);
   });
 });
+
+describe("sweep: every level has a guide", () => {
+  it("a level is either guided step by step or gets How to work it", () => {
+    // review-beginner had neither: no steps, and no "What needs fixing", so the guide never showed.
+    const none = levels.filter((l) => !l.steps?.length && !usesMentor(l)).map((l) => l.id);
+    expect(none).toEqual([]);
+  });
+});

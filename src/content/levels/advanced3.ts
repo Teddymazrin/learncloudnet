@@ -28,7 +28,7 @@ const LEARN = {
   ...LEARN_GUEST,
   transit: L("Configure VPN gateway transit for virtual network peering", "https://learn.microsoft.com/azure/vpn-gateway/vpn-gateway-peering-gateway-transit"),
   nsg: L("Troubleshoot NSG misconfigurations: rule order", "https://learn.microsoft.com/troubleshoot/azure/virtual-network/virtual-network-troubleshoot-nsg-blocking-traffic"),
-  udr: L("Virtual network traffic routing: how Azure selects a route", "https://learn.microsoft.com/azure/virtual-network/virtual-networks-udr-overview#how-azure-selects-a-route"),
+  udr: L("Virtual network traffic routing: how Azure selects a route", "https://learn.microsoft.com/azure/virtual-network/virtual-networks-udr-overview#how-azure-selects-routes-for-traffic-routing"),
   peering: L("Create, change, or delete a virtual network peering", "https://learn.microsoft.com/azure/virtual-network/virtual-network-manage-peering"),
   se: L("Virtual network service endpoints", "https://learn.microsoft.com/azure/virtual-network/virtual-network-service-endpoints-overview"),
   dnsServers: L("Change DNS servers of a virtual network", "https://learn.microsoft.com/azure/virtual-network/manage-virtual-network#change-dns-servers-of-a-virtual-network-using-the-azure-cli"),
@@ -79,7 +79,7 @@ export const advancedGuest: Level[] = [
       facts: ["Order: NSG and routes, then the guest firewall, then the listener.", "UFW active: a port with no allow rule is denied.", "Run Command works even when SSH is blocked.", "Don't disable the guest firewall as a fix."],
     },
     steps: [
-      { say: "Test the connection from Azure's side. Look at the issue type on the last hop.", cmd: `az network watcher test-connectivity ${G} --source-resource vm-client --dest-address 10.1.1.4 --dest-port 443` },
+      { say: "Test the connection from Azure's side. Look at the issue type on the last hop.", cmd: `az network watcher test-connectivity ${G} --source-resource vm-client --dest-address 10.1.1.4 --dest-port 443 --protocol Tcp` },
       { say: "GuestFirewall: the VM itself dropped it. Look inside with Run command.", cmd: RUN("vm-web", "ufw status numbered"), flags: [["--command-id RunShellScript", "run your own shell script"], ["--scripts", "the script, run as root by the VM agent"]] },
       { say: "Only SSH from the admin subnet is allowed. Allow 443 from the client subnet, nothing more.", cmd: RUN("vm-web", "ufw allow from 10.1.2.0/24 to any port 443 proto tcp") },
       { say: "Test again. The issue changes.", cmd: `az network watcher test-connectivity ${G} --source-resource vm-client --dest-address 10.1.1.4 --dest-port 443 --protocol Tcp` },
@@ -92,7 +92,7 @@ export const advancedGuest: Level[] = [
       { text: "Let vm-client open the site on vm-web (443)", test: ({ st }) => can(st, "vm-client", "10.1.1.4", 443) },
       { text: "Keep UFW running on vm-web", test: ({ st }) => ufwOn(st, "vm-web") },
       { text: "Keep SSH from vm-client to vm-web blocked", test: ({ st }) => !can(st, "vm-client", "10.1.1.4", 22) },
-      ask(1, "UFW is active and port 8080 isn't in its rule list. Is 8080 allowed or denied?", ["denied", "deny", "blocked"]),
+      ask(1, "UFW is active with its default incoming policy, and port 8080 isn't in its rule list. Is 8080 allowed or denied?", ["denied", "deny", "blocked"]),
     ],
     par: 2,
     hints: ["Connection troubleshoot names the issue type on the hop where it stops.", "The issue is inside vm-web: look with Run command, ufw status numbered and ss -tlnp.", "Run steps 3 and 6, then answer 1 denied."],
@@ -180,7 +180,7 @@ export const advancedReviews: Level[] = [
   },
   {
     id: "review-endpoints-dns", tier: "advanced", stage: "Review", title: "Review: storage, DNS servers and a missing record",
-    story: "vm-app has two problems since vnet-app moved off the old DNS server. It can't reach stdata01, which only allows subnet-app through its firewall. And it can't find api.corp.internal, the internal API on vm-api at 10.1.1.20. stdata01 keeps denying by default.",
+    story: "vm-app has two problems since the old DNS server was shut down. It can't reach stdata01, which only allows subnet-app through its firewall. And it can't find api.corp.internal, the internal API on vm-api at 10.1.1.20. stdata01 keeps denying by default.",
     fix: "vm-app can't reach stdata01 and can't find api.corp.internal.",
     setup: () => {
       const st = base();
@@ -205,7 +205,7 @@ export const advancedReviews: Level[] = [
     flows: [{ from: "vm-app", dns: "api.corp.internal", expect: "vm-api", port: 443, want: "open" }],
     solution: [
       `az network vnet subnet update ${G} --vnet-name vnet-app --name subnet-app --service-endpoints Microsoft.Storage`,
-      `az network vnet update ${G} --name vnet-app --dns-servers 168.63.129.16`,
+      `az network vnet update ${G} --name vnet-app --dns-servers ""`,
       `az network private-dns record-set a add-record ${G} --zone-name corp.internal --record-set-name api --ipv4-address 10.1.1.20`,
     ],
   },
