@@ -1,5 +1,5 @@
 // Soft, short tones for progress moments. Generated with Web Audio, no files to load. Off with one tap.
-const KEY = "next-hop.sound.v1";
+const KEY = "learncloudnet.sound.v1";
 let ctx: AudioContext | null = null;
 
 export function soundOn(): boolean {

@@ -1,5 +1,5 @@
 // Color themes. Each is a set of CSS variables in globals.css under [data-theme]. Ultraviolet lives in :root; Dark is the default.
-export const THEME_KEY = "next-hop.theme.v1";
+export const THEME_KEY = "learncloudnet.theme.v1";
 export const THEMES = [
   { id: "ultraviolet", name: "Ultraviolet", swatch: ["#0C0718", "#A36BFF", "#38E1FF"] },
   { id: "cobalt", name: "Cobalt", swatch: ["#060B17", "#4D8DFF", "#FFC145"] },
@@ -17,8 +17,13 @@ export const DEFAULT_THEME: ThemeId = "dark";
 export function applyTheme(id: ThemeId) {
   if (id === "ultraviolet") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = id;
   try { localStorage.setItem(THEME_KEY, id); } catch { /* ignore */ }
-  window.dispatchEvent(new Event("next-hop-theme"));
+  window.dispatchEvent(new Event("learncloudnet-theme"));
 }
 
-/** Runs before the page paints, so a saved theme never flashes the default first. */
-export const THEME_BOOT = `try{var t=localStorage.getItem("${THEME_KEY}");if(t==="ultraviolet")delete document.documentElement.dataset.theme;else if(t)document.documentElement.dataset.theme=t}catch(e){}`;
+/** Storage keys used the site's earlier name. Copy each to the current prefix once, so saved progress and settings carry over. */
+const LEGACY_PREFIX = "next-hop.";
+const STORAGE_PREFIX = "learncloudnet.";
+export const MIGRATE_STORAGE = `try{var s=localStorage,o=[];for(var i=0;i<s.length;i++){var k=s.key(i);if(k&&k.indexOf("${LEGACY_PREFIX}")===0)o.push(k)}o.forEach(function(k){var n="${STORAGE_PREFIX}"+k.slice(${LEGACY_PREFIX.length});if(s.getItem(n)===null)s.setItem(n,s.getItem(k));s.removeItem(k)})}catch(e){}`;
+
+/** Runs before the page paints, so a saved theme never flashes the default first. Migrates old storage keys first. */
+export const THEME_BOOT = `${MIGRATE_STORAGE}try{var t=localStorage.getItem("${THEME_KEY}");if(t==="ultraviolet")delete document.documentElement.dataset.theme;else if(t)document.documentElement.dataset.theme=t}catch(e){}`;

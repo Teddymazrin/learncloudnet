@@ -34,5 +34,5 @@ const html = `<title>Next Hop</title>
 <div id="root"></div>
 <script>${js}</script>
 `;
-writeFileSync(path.join(outdir, "next-hop-preview.html"), html);
-console.log("wrote", path.join(outdir, "next-hop-preview.html"), Math.round(html.length / 1024) + " KB");
+writeFileSync(path.join(outdir, "learncloudnet-preview.html"), html);
+console.log("wrote", path.join(outdir, "learncloudnet-preview.html"), Math.round(html.length / 1024) + " KB");

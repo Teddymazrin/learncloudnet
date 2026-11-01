@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LEVELS, levelsIn, type Tier } from "@/content";
 
-const KEY = "next-hop.progress.v1";
+const KEY = "learncloudnet.progress.v1";
 
 interface Saved { done: Record<string, number>; skipped: Tier[]; last?: string }
 interface Progress extends Saved {

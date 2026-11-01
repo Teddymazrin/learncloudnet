@@ -32,12 +32,12 @@ import { Confetti } from "./Confetti";
 
 const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
 
-const TOUR_KEY = "next-hop.tour.v1";
-const MODE_KEY = "next-hop.mode.v1";
-const OS_KEY = "next-hop.os.v1";
-const HELP_KEY = "next-hop.help.v1";
-const SIZE_KEY = "next-hop.layout.v1";
-const CHALLENGE_KEY = "next-hop.challenges.v1";
+const TOUR_KEY = "learncloudnet.tour.v1";
+const MODE_KEY = "learncloudnet.mode.v1";
+const OS_KEY = "learncloudnet.os.v1";
+const HELP_KEY = "learncloudnet.help.v1";
+const SIZE_KEY = "learncloudnet.layout.v1";
+const CHALLENGE_KEY = "learncloudnet.challenges.v1";
 
 const selLabel = (s: Selection) => (s.kind === "subnet" ? s.subnet : s.kind === "peer" ? `${s.a} ⇄ ${s.b}` : s.id);
 

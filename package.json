@@ -1,9 +1,9 @@
 {
-  "name": "next-hop",
+  "name": "learncloudnet",
   "version": "0.2.1",
   "private": true,
   "license": "MIT",
-  "description": "Next Hop: Learn Azure networking, beginner to advanced.",
+  "description": "Learn Cloud Net: Learn Azure networking, beginner to advanced.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

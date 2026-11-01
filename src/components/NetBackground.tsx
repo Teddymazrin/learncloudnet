@@ -113,8 +113,8 @@ export function NetBackground() {
     const onResize = () => { if (window.innerWidth === w && Math.abs(window.innerHeight - h) < 160) return; size(); if (still) draw(0); };
     window.addEventListener("resize", onResize);
     const onTheme = () => { pal = palette(); packets.forEach((p) => { p.color = pal.packets[Math.floor(Math.random() * pal.packets.length)]; }); if (still) draw(0); };
-    window.addEventListener("next-hop-theme", onTheme);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); window.removeEventListener("next-hop-theme", onTheme); };
+    window.addEventListener("learncloudnet-theme", onTheme);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); window.removeEventListener("learncloudnet-theme", onTheme); };
   }, []);
 
   return <canvas ref={canvas} className="net-bg" aria-hidden="true" />;
