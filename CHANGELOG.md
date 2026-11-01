@@ -2,6 +2,17 @@
 
 All notable changes to Learn Cloud Net are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-11-01
+
+Simulator fixes so the lab matches Azure.
+
+### Fixed
+
+- **Detaching an NSG or route table:** `--network-security-group null` and `--route-table null` (or an empty value) now dissociate on `az network vnet subnet update` and `az network nic update`, as the az reference documents. Before, both failed as "not found", so an associated NSG or route table could never be deleted. The in-use errors now show a command that works.
+- **Portal:** the subnet and NIC association forms offer **None (dissociate)** once something is attached, so the delete flows no longer dead-end.
+- **Peering Disconnected:** deleting one link of a Connected peering now leaves the other link Disconnected, not Initiated. Re-creating only the deleted side is refused until the Disconnected link is deleted too, as in Azure.
+- **`az network nsg rule create`** no longer says `--direction`, `--access`, `--protocol` and `--destination-port-ranges` are required. It uses the az defaults (Inbound, Allow, `*`, port 80) and a lab note names each default it used.
+
 ## [0.2.1] - 2026-10-31
 
 Phone fixes, and a full audit of every level for accuracy and consistency.
@@ -53,6 +64,7 @@ A guided learning overhaul. Every level now teaches the troubleshooting method, 
 
 First public version: 80 levels in four tiers, a sandbox, a cheat sheet, Linux and Windows VMs, and progress saved in the browser.
 
+[0.2.2]: https://github.com/Teddymazrin/learncloudnet/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Teddymazrin/learncloudnet/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Teddymazrin/learncloudnet/compare/8053100...v0.2.0
 [0.1.0]: https://github.com/Teddymazrin/learncloudnet/commit/8053100
