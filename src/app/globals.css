@@ -123,7 +123,6 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; text-wra
 .step { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .step.done { border-color: var(--ok); }
 .step p { margin: 0; font-size: 14px; }
-.step p::before { counter-increment: step; content: counter(step) ". "; font-weight: 600; }
 .cmdline { display: flex; gap: 6px; align-items: flex-start; }
 .cmdline code { flex: 1; min-width: 0; background: var(--term-bg); color: var(--term-ink); border-radius: 6px; padding: 7px 9px; font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .cmdline button { flex: none; border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; font-size: 12px; padding: 5px 8px; }
@@ -637,10 +636,21 @@ h1, h2, h3, .brand b { letter-spacing: 0; line-height: 1.4; font-weight: 400; }
 /* Guided steps as game cards: a numbered badge, a terminal-style command, a cyan "Type it". */
 ol.steps { display: flex; flex-direction: column; gap: 10px; counter-reset: step; }
 .step { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, var(--surface-2)), var(--surface-2)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-left: 3px solid var(--accent2); border-radius: 10px; padding: 12px 14px; gap: 8px; box-shadow: 0 4px 16px color-mix(in srgb, #000 30%, transparent); }
-.step p { display: flex; gap: 10px; align-items: baseline; line-height: 1.45; }
-.step p::before { content: counter(step); flex: none; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 6px; background: var(--accent2); color: var(--accent-ink); font-family: var(--font-display); font-size: 10px; font-weight: 400; box-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 50%, transparent); translate: 0 5px; }
+/* One number per step: count the step, not every paragraph in it (the notes under "What's this?" are paragraphs too). */
+.step { counter-increment: step; }
+.step > p.step-say { display: flex; gap: 10px; align-items: baseline; line-height: 1.45; }
+.step > p.step-say > span:first-of-type { flex: 1; }
+.step > p.step-say::before { content: counter(step); flex: none; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 6px; background: var(--accent2); color: var(--accent-ink); font-family: var(--font-display); font-size: 10px; font-weight: 400; box-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 50%, transparent); translate: 0 5px; }
 .step.done { background: linear-gradient(180deg, color-mix(in srgb, var(--ok) 10%, var(--surface-2)), var(--surface-2)); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); border-left-color: var(--ok); }
-.step.done p::before { background: var(--ok); box-shadow: 0 0 10px color-mix(in srgb, var(--ok) 50%, transparent); }
+.step.done > p.step-say::before { content: "✓"; background: var(--ok); box-shadow: 0 0 10px color-mix(in srgb, var(--ok) 50%, transparent); }
+/* Same language as How to work it: the step you're on is the accent color and says so; the rest wait in grey. */
+.step:not(.done):not(.now) { background: var(--surface); border-color: var(--line); border-left-color: var(--line); box-shadow: none; }
+.step:not(.done):not(.now) > p.step-say::before { background: transparent; color: var(--muted); border: 1px solid var(--line); box-shadow: none; }
+.step.now { border-color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent); }
+.step.now > p.step-say::before { background: transparent; color: var(--accent); border: 2px solid var(--accent); box-shadow: none; }
+.step .mstep-state { align-self: center; flex: none; }
+.step.now .mstep-state { background: var(--accent); color: var(--accent-ink); }
+.step.done .mstep-state { color: var(--ok); border: 1px solid var(--ok); }
 .cmdline code { border: 1px solid color-mix(in srgb, var(--accent2) 30%, var(--term-line)); padding: 8px 10px; }
 .cmdline code::before { content: "$ "; color: var(--accent2); }
 .cmdline button { border: 1px solid var(--accent2); background: var(--accent2-soft); color: var(--accent2); font-weight: 600; padding: 6px 10px; transition: background .15s ease, color .15s ease; }
@@ -797,10 +807,15 @@ ol.mentor { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-d
 .mstep { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
 .mstep-head { display: flex; gap: 10px; align-items: center; }
 .mstep-n { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; font-size: 13px; font-weight: 700; border: 1px solid var(--line); }
-.mstep.now { border-color: color-mix(in srgb, var(--accent2) 60%, var(--line)); background: color-mix(in srgb, var(--accent2) 7%, var(--surface-2)); color: var(--ink); box-shadow: 0 0 14px color-mix(in srgb, var(--accent2) 18%, transparent); }
-.mstep.now .mstep-n { background: var(--accent2); color: var(--accent-ink); border-color: var(--accent2); }
-.mstep.done { color: var(--ok); }
-.mstep.done .mstep-n { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+/* The step you're on is the accent color with a "You're here" tag; a finished step is green with a check and "Done".
+   The two used to share a green, so the current step read as finished. */
+.mstep.now { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); color: var(--ink); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent); }
+.mstep.now .mstep-n { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+.mstep.done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
+.mstep.done .mstep-n { background: var(--ok); border-color: var(--ok); color: var(--accent-ink); }
+.mstep-state { margin-left: auto; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.mstep.now .mstep-state { background: var(--accent); color: var(--accent-ink); }
+.mstep.done .mstep-state { color: var(--ok); border: 1px solid var(--ok); }
 .mstep p { margin: 8px 0 0; font-size: 14.5px; line-height: 1.5; }
 .mstep .chips { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .mstep .chips button { text-align: left; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-size: 14px; }
@@ -1141,3 +1156,9 @@ details.walk summary { cursor: pointer; color: var(--accent2); font-weight: 600;
 .the-fix-card ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
 .the-fix-card li p { margin: 0 0 4px; }
 .the-fix-card code { display: block; font-family: var(--font-mono); font-size: 12px; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; overflow-wrap: anywhere; }
+
+/* Feedback right where you tapped: Reset in a level, and clearing progress */
+/* A short message that floats over the page, so it shows wherever you are scrolled. */
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 60; margin: 0; padding: 10px 16px; border: 1px solid var(--ok); border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--ok); background: var(--ok-soft); box-shadow: 0 8px 24px color-mix(in srgb, #000 35%, transparent); max-width: calc(100vw - 32px); text-align: center; }
+.reset-done { color: var(--ok); font-weight: 600; }
+.btn.danger { border-color: var(--bad); color: var(--bad); }

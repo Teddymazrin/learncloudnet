@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { LEVELS, TIERS, levelsIn } from "@/content";
 import type { Level } from "@/content/types";
@@ -107,11 +108,20 @@ export function PathView() {
 
 function ResetProgress() {
   const p = useProgress();
+  // Ask once more, then say it's done: the XP counter that changes is at the top of the page, out of sight on a phone.
+  const [sure, setSure] = useState(false);
+  const [done, setDone] = useState(false);
   return (
-    <details className="note">
+    <details className="note" onToggle={() => { setSure(false); setDone(false); }}>
       <summary style={{ cursor: "pointer" }}>Clear my progress</summary>
       <p>This removes all stars and unlocks saved in this browser.</p>
-      <button className="btn" type="button" onClick={() => p.reset()}>Clear progress on this device</button>
+      {done ? <p className="reset-done" role="status">Progress cleared. Every level is back to the start.</p>
+        : sure ? (
+          <div className="row">
+            <button className="btn danger" type="button" onClick={() => { p.reset(); setSure(false); setDone(true); }}>Yes, clear everything</button>
+            <button className="btn ghost" type="button" onClick={() => setSure(false)}>Cancel</button>
+          </div>
+        ) : <button className="btn" type="button" onClick={() => setSure(true)}>Clear progress on this device</button>}
     </details>
   );
 }

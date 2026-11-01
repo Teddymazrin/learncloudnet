@@ -161,6 +161,26 @@ export function LevelPlayer({ id }: { id: string }) {
   const [causeOk, setCauseOk] = useState(false);
   const [causeWrong, setCauseWrong] = useState<string | null>(null);
   const [sawFix, setSawFix] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Phones: scroll to the Portal once the Level tab has rendered it.
+  const [toPortal, setToPortal] = useState(0);
+  useEffect(() => {
+    if (!toPortal) return;
+    const t = setTimeout(() => deskRef.current?.querySelector(".bottom .portal")?.scrollIntoView({ block: "start" }), 60);
+    return () => clearTimeout(t);
+  }, [toPortal]);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reset puts the page back too, not just the lab: every section closed, the walkthrough folded, back at the top.
+  const resetAll = () => {
+    start();
+    print("lab: lab reset to the level's starting state.", "lab");
+    setTab("level"); setWalkTab(null); setResult(null);
+    deskRef.current?.querySelectorAll<HTMLDetailsElement>(".panel details[open]").forEach((d) => { d.open = false; });
+    deskRef.current?.querySelector(".panel-scroll")?.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0 });
+    flash("Lab reset to how the level started.");
+  };
+  const flash = (msg: string) => { setNotice(msg); if (noticeTimer.current) clearTimeout(noticeTimer.current); noticeTimer.current = setTimeout(() => setNotice(null), 3500); };
   // The full walkthrough: which way it's shown, and whether the steps past "see it fail" are open.
   const [walkTab, setWalkTab] = useState<"cmd" | "portal" | null>(null);
   const [walkAll, setWalkAll] = useState(false);
@@ -386,6 +406,9 @@ export function LevelPlayer({ id }: { id: string }) {
     const answered = level.objectives.every((o, k) => !o.question || met[k]);
     return (level.steps ?? []).map((s) => !!s.cmd && (ran.has(norm(s.cmd)) || (s.cmd.startsWith("answer") && answered)));
   }, [level, lines, met]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A step with nothing to type counts as done once you've moved past it. The first step not done is the one you're on.
+  const stepShownDone = stepDone.map((d, k) => d || stepDone.slice(k + 1).some(Boolean));
+  const stepNow = stepShownDone.findIndex((d) => !d);
 
   // Forms only offer what this level needs: no Create tab unless it creates something,
   // and a guided level's change forms open at the step that builds, not while you're still reading.
@@ -649,13 +672,18 @@ export function LevelPlayer({ id }: { id: string }) {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
+  // Phones: leave the map for the Level tab, with the selected resource's changes open in the Portal pane.
+  const openPortal = () => { setMode("portal"); setForm(null); setGroup("selected"); setTab("level"); setToPortal((n) => n + 1); };
   const inspector = selected && (
     <div className={`inspect-card${inspectFolded ? " folded" : ""}`} style={{ ["--ix" as string]: `${inspectPos.x}px`, ["--iy" as string]: `${inspectPos.y}px` }}>
       <div className="inspect-grip" onPointerDown={dragInspector} onDoubleClick={() => setInspectPos({ x: 0, y: 0 })} title="Drag to move. Double-click to put it back.">
         <span aria-hidden="true">⠿</span><span>Drag to move</span>
         <button type="button" onClick={() => setInspectFolded(!inspectFolded)}>{inspectFolded ? "Unfold" : "Fold"}</button>
       </div>
-      <Inspector st={st.current} sel={selected} flows={incident ? [] : flows} explained={flows.filter((_, k) => explained[k])} onClose={() => select(null)} actions={view === "portal" && selActions.length ? <p className="note" style={{ margin: 0 }}>{selActions.length} change{selActions.length === 1 ? "" : "s"} available in the Portal pane.</p> : null} />
+      <Inspector st={st.current} sel={selected} flows={incident ? [] : flows} explained={flows.filter((_, k) => explained[k])} onClose={() => select(null)} actions={
+        // Phones show the map and the Portal on different tabs, so offer a way across instead of a pointer to a pane you can't see.
+        isPhone && portalOk && selActions.length ? <button type="button" className="btn primary" onClick={openPortal}>Change it in the Portal ›</button>
+        : view === "portal" && selActions.length ? <p className="note" style={{ margin: 0 }}>{selActions.length} change{selActions.length === 1 ? "" : "s"} available in the Portal pane.</p> : null} />
     </div>
   );
 
@@ -808,7 +836,7 @@ export function LevelPlayer({ id }: { id: string }) {
                 <ol className="mentor">
                   {msteps.map((m, i) => (
                     <li key={m.id} className={`mstep${m.done ? " done" : ""}${i === current ? " now" : ""}`}>
-                      <div className="mstep-head"><span className="mstep-n">{m.done ? "✓" : i + 1}</span><b>{m.title}</b></div>
+                      <div className="mstep-head"><span className="mstep-n">{m.done ? "✓" : i + 1}</span><b>{m.title}</b>{m.done ? <span className="mstep-state">Done</span> : i === current ? <span className="mstep-state">You&apos;re here</span> : null}</div>
                       {i === current && <StepItem step={m} brief={!helpOn} />}
                       {m.id === "cause" && i === current && cause0 && (
                         <div className="chips">
@@ -834,8 +862,8 @@ export function LevelPlayer({ id }: { id: string }) {
                   const isAnswer = !!s.cmd?.startsWith("answer");
                   const qs = isAnswer ? level.objectives.filter((o) => o.question) : [];
                   return (
-                    <li key={k} className={`step${stepDone[k] ? " done" : ""}`}>
-                      <p>{s.say}</p>
+                    <li key={k} className={`step${stepShownDone[k] ? " done" : k === stepNow ? " now" : ""}`}>
+                      <p className="step-say"><span>{s.say}</span>{stepShownDone[k] ? <span className="mstep-state">Done</span> : k === stepNow ? <span className="mstep-state">You&apos;re here</span> : null}</p>
                       {qs.length > 0 && questions(qs)}
                       {s.cmd && !isAnswer && <CmdRow cmd={osCmd(s.cmd)} onType={typeIt} />}
                       {s.flags && osCmd(s.cmd ?? "") === s.cmd && <ul className="flags">{s.flags.map(([fl, d]) => <li key={fl}><code>{fl}</code> {d}</li>)}</ul>}
@@ -855,6 +883,7 @@ export function LevelPlayer({ id }: { id: string }) {
                 </span>
                 {/* Lines that run on a VM come in Linux and Windows flavors. This is the same switch as above the shell, so the two never disagree. */}
                 {wTab === "cmd" && walk.some((w) => w.on) && <div className="mstep-os walk-os"><span>VM commands for</span>{osSwitch}</div>}
+                {wTab === "portal" && isPhone && <p className="note" style={{ margin: "0 0 6px" }}>On a phone, the map is on the Network tab. Tap the resource there, then Change it in the Portal to come back with its settings open.</p>}
                 <ol className="walk-steps">
                   {walk.filter((w, k) => walkOpen || k === 0 || w.phase === "see").map((w, k) => (
                     <li key={k} className={`walk-step ${w.phase}`}>
@@ -896,9 +925,11 @@ export function LevelPlayer({ id }: { id: string }) {
             </details>
           </div>
 
+          {/* Say what happened right where you tapped. On a phone the shell, where the lab also says it, is far below. */}
+          {notice && <p className="toast" role="status">{notice}</p>}
           <div className="panel-foot">
             {!level.playground && <button className={`btn${nudgeReady ? " nudge" : ""}`} type="button" onClick={showHint}>{hints === 0 ? "Ask for a hint (free)" : hints < ladder.length ? "Another hint" : sawFix ? "Show the fix again" : "Show me the fix"}</button>}
-            <button className="btn ghost" onClick={() => { start(); print("lab: lab reset to the level's starting state.", "lab"); }}>Reset</button>
+            <button className="btn ghost" onClick={resetAll}>Reset</button>
             {!level.playground && (
               <span className="foot-stats" title="State-changing commands against par">
                 {changes}/{level.par} changes{explains > 0 ? ` · ${explains} explain${explains === 1 ? "" : "s"}` : ""}
